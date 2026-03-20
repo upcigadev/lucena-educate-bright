@@ -464,7 +464,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_diretor_escola_ids: { Args: { _auth_id: string }; Returns: string[] }
+      get_professor_escola_ids: {
+        Args: { _auth_id: string }
+        Returns: string[]
+      }
+      get_professor_turma_ids: { Args: { _auth_id: string }; Returns: string[] }
+      get_responsavel_aluno_ids: {
+        Args: { _auth_id: string }
+        Returns: string[]
+      }
+      get_user_papel: { Args: { _auth_id: string }; Returns: string }
+      get_usuario_id: { Args: { _auth_id: string }; Returns: string }
+      is_diretor_of_escola: {
+        Args: { _auth_id: string; _escola_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
