@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { maskCPF, cpfMask, validateCPF } from '@/lib/cpf';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { criarUsuario } from '@/lib/criar-usuario';
 
 interface ProfRow {
   id: string;
