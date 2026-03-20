@@ -16,6 +16,7 @@ import Alunos from '@/pages/Alunos';
 import Responsaveis from '@/pages/Responsaveis';
 import Frequencia from '@/pages/Frequencia';
 import IoTConfig from '@/pages/IoTConfig';
+import Justificativas from '@/pages/Justificativas';
 import NotFound from '@/pages/NotFound';
 
 const queryClient = new QueryClient();
