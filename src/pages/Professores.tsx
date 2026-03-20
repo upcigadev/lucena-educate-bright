@@ -78,21 +78,19 @@ export default function Professores() {
       const cpfClean = form.cpf.replace(/\D/g, '');
       if (!validateCPF(cpfClean)) { toast.error('CPF inválido.'); return; }
 
-      const { data: usr, error } = await supabase.from('usuarios').insert({
-        nome: form.nome, cpf: cpfClean, email: form.email || null, papel: 'PROFESSOR'
-      }).select().single();
-      if (error) {
-        toast.error(error.message.includes('duplicate') ? 'CPF já cadastrado.' : error.message);
+      try {
+        const result = await criarUsuario({
+          nome: form.nome,
+          cpf: cpfClean,
+          email: form.email || undefined,
+          papel: 'PROFESSOR',
+          escolas_ids: selectedEscolas,
+        });
+        toast.success(`Professor cadastrado. Login: ${result.email_login} | Senha: ${result.senha_temporaria}`);
+      } catch (err: any) {
+        toast.error(err.message);
         return;
       }
-      const { data: prof, error: pErr } = await supabase.from('professores').insert({
-        usuario_id: (usr as any).id
-      }).select().single();
-      if (pErr) { toast.error(pErr.message); return; }
-      await supabase.from('professor_escolas').insert(
-        selectedEscolas.map(eid => ({ professor_id: (prof as any).id, escola_id: eid }))
-      );
-      toast.success('Professor cadastrado.');
     } else {
       await supabase.from('usuarios').update({ nome: form.nome, email: form.email || null }).eq('id', editing.usuario_id);
       await supabase.from('professor_escolas').delete().eq('professor_id', editing.id);

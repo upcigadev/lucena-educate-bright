@@ -74,20 +74,19 @@ export default function Diretores() {
       await supabase.from('diretores').update({ escola_id: form.escola_id }).eq('id', editing.id);
       toast.success('Diretor atualizado.');
     } else {
-      const { data: usr, error: usrErr } = await supabase.from('usuarios').insert({
-        nome: form.nome, cpf: cpfClean, email: form.email || null, papel: 'DIRETOR'
-      }).select().single();
-      if (usrErr) {
-        if (usrErr.message.includes('duplicate') || usrErr.message.includes('unique')) {
-          toast.error('CPF já cadastrado no sistema.');
-        } else toast.error(usrErr.message);
+      try {
+        const result = await criarUsuario({
+          nome: form.nome,
+          cpf: cpfClean,
+          email: form.email || undefined,
+          papel: 'DIRETOR',
+          escola_id: form.escola_id,
+        });
+        toast.success(`Diretor cadastrado. Login: ${result.email_login} | Senha: ${result.senha_temporaria}`);
+      } catch (err: any) {
+        toast.error(err.message);
         return;
       }
-      const { error: dirErr } = await supabase.from('diretores').insert({
-        usuario_id: (usr as any).id, escola_id: form.escola_id
-      });
-      if (dirErr) { toast.error(dirErr.message); return; }
-      toast.success('Diretor cadastrado.');
     }
     setOpen(false);
     load();
