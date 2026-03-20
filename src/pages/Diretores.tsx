@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { maskCPF, cpfMask, validateCPF } from '@/lib/cpf';
+import { criarUsuario } from '@/lib/criar-usuario';
 
 interface DiretorRow {
   id: string;
