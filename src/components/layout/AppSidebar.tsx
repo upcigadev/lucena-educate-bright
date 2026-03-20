@@ -27,6 +27,7 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Séries e Turmas', href: '/series', icon: BookOpen },
     { label: 'Alunos', href: '/alunos', icon: Users },
+    { label: 'Frequência', href: '/frequencia', icon: CalendarDays },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
   ],
   PROFESSOR: [
