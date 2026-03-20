@@ -34,6 +34,7 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Minhas Turmas', href: '/turmas', icon: BookOpen },
     { label: 'Alunos', href: '/alunos', icon: Users },
+    { label: 'Frequência', href: '/frequencia', icon: CalendarDays },
   ],
   RESPONSAVEL: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
