@@ -14,6 +14,8 @@ import Diretores from '@/pages/Diretores';
 import Professores from '@/pages/Professores';
 import Alunos from '@/pages/Alunos';
 import Responsaveis from '@/pages/Responsaveis';
+import Frequencia from '@/pages/Frequencia';
+import IoTConfig from '@/pages/IoTConfig';
 import NotFound from '@/pages/NotFound';
 
 const queryClient = new QueryClient();
