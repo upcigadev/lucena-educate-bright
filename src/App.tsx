@@ -76,6 +76,7 @@ const App = () => (
             <Route path="responsaveis" element={<Responsaveis />} />
             <Route path="frequencia" element={<Frequencia />} />
             <Route path="iot-config" element={<IoTConfig />} />
+            <Route path="justificativas" element={<Justificativas />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
