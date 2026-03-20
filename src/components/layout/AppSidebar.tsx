@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   School, Users, GraduationCap, BookOpen, UserCheck, UserCog,
-  LayoutDashboard, ClipboardList, Baby, X, Menu
+  LayoutDashboard, ClipboardList, Baby, X, Menu, CalendarDays, Wifi
 } from 'lucide-react';
 import { useAuthStore, type Papel } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
@@ -20,17 +20,21 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Professores', href: '/professores', icon: GraduationCap },
     { label: 'Alunos', href: '/alunos', icon: Users },
     { label: 'Responsáveis', href: '/responsaveis', icon: Baby },
+    { label: 'Frequência', href: '/frequencia', icon: CalendarDays },
+    { label: 'Config. IoT', href: '/iot-config', icon: Wifi },
   ],
   DIRETOR: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Séries e Turmas', href: '/series', icon: BookOpen },
     { label: 'Alunos', href: '/alunos', icon: Users },
+    { label: 'Frequência', href: '/frequencia', icon: CalendarDays },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
   ],
   PROFESSOR: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Minhas Turmas', href: '/turmas', icon: BookOpen },
     { label: 'Alunos', href: '/alunos', icon: Users },
+    { label: 'Frequência', href: '/frequencia', icon: CalendarDays },
   ],
   RESPONSAVEL: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },

@@ -195,6 +195,38 @@ export type Database = {
           },
         ]
       }
+      escola_iot_config: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          escola_id: string
+          id: string
+          modo_verificacao: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          escola_id: string
+          id?: string
+          modo_verificacao?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          escola_id?: string
+          id?: string
+          modo_verificacao?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "escola_iot_config_escola_id_fkey"
+            columns: ["escola_id"]
+            isOneToOne: true
+            referencedRelation: "escolas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       escolas: {
         Row: {
           created_at: string
@@ -221,6 +253,147 @@ export type Database = {
           telefone?: string | null
         }
         Relationships: []
+      }
+      frequencias: {
+        Row: {
+          aluno_id: string
+          created_at: string
+          data: string
+          dispositivo_id: string | null
+          hora_entrada: string | null
+          hora_saida: string | null
+          id: string
+          motivo: string | null
+          status: string
+          turma_id: string | null
+        }
+        Insert: {
+          aluno_id: string
+          created_at?: string
+          data: string
+          dispositivo_id?: string | null
+          hora_entrada?: string | null
+          hora_saida?: string | null
+          id?: string
+          motivo?: string | null
+          status?: string
+          turma_id?: string | null
+        }
+        Update: {
+          aluno_id?: string
+          created_at?: string
+          data?: string
+          dispositivo_id?: string | null
+          hora_entrada?: string | null
+          hora_saida?: string | null
+          id?: string
+          motivo?: string | null
+          status?: string
+          turma_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "frequencias_aluno_id_fkey"
+            columns: ["aluno_id"]
+            isOneToOne: false
+            referencedRelation: "alunos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "frequencias_turma_id_fkey"
+            columns: ["turma_id"]
+            isOneToOne: false
+            referencedRelation: "turmas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      iot_evento_log: {
+        Row: {
+          created_at: string
+          dispositivo_id: string
+          erro: string | null
+          evento: string
+          id: string
+          matricula: string
+          status_processamento: string
+          timestamp_evento: string
+        }
+        Insert: {
+          created_at?: string
+          dispositivo_id: string
+          erro?: string | null
+          evento: string
+          id?: string
+          matricula: string
+          status_processamento?: string
+          timestamp_evento: string
+        }
+        Update: {
+          created_at?: string
+          dispositivo_id?: string
+          erro?: string | null
+          evento?: string
+          id?: string
+          matricula?: string
+          status_processamento?: string
+          timestamp_evento?: string
+        }
+        Relationships: []
+      }
+      justificativas: {
+        Row: {
+          arquivo_url: string | null
+          created_at: string
+          descricao: string | null
+          frequencia_id: string
+          id: string
+          observacao_diretor: string | null
+          responsavel_id: string
+          status: string
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          arquivo_url?: string | null
+          created_at?: string
+          descricao?: string | null
+          frequencia_id: string
+          id?: string
+          observacao_diretor?: string | null
+          responsavel_id: string
+          status?: string
+          tipo?: string
+          updated_at?: string
+        }
+        Update: {
+          arquivo_url?: string | null
+          created_at?: string
+          descricao?: string | null
+          frequencia_id?: string
+          id?: string
+          observacao_diretor?: string | null
+          responsavel_id?: string
+          status?: string
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "justificativas_frequencia_id_fkey"
+            columns: ["frequencia_id"]
+            isOneToOne: false
+            referencedRelation: "frequencias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "justificativas_responsavel_id_fkey"
+            columns: ["responsavel_id"]
+            isOneToOne: false
+            referencedRelation: "responsaveis"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       professor_escolas: {
         Row: {

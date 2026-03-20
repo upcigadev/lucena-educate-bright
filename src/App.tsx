@@ -14,6 +14,8 @@ import Diretores from '@/pages/Diretores';
 import Professores from '@/pages/Professores';
 import Alunos from '@/pages/Alunos';
 import Responsaveis from '@/pages/Responsaveis';
+import Frequencia from '@/pages/Frequencia';
+import IoTConfig from '@/pages/IoTConfig';
 import NotFound from '@/pages/NotFound';
 
 const queryClient = new QueryClient();
@@ -71,6 +73,8 @@ const App = () => (
             <Route path="professores" element={<Professores />} />
             <Route path="alunos" element={<Alunos />} />
             <Route path="responsaveis" element={<Responsaveis />} />
+            <Route path="frequencia" element={<Frequencia />} />
+            <Route path="iot-config" element={<IoTConfig />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
