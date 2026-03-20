@@ -20,6 +20,8 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Professores', href: '/professores', icon: GraduationCap },
     { label: 'Alunos', href: '/alunos', icon: Users },
     { label: 'Responsáveis', href: '/responsaveis', icon: Baby },
+    { label: 'Frequência', href: '/frequencia', icon: CalendarDays },
+    { label: 'Config. IoT', href: '/iot-config', icon: Wifi },
   ],
   DIRETOR: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
