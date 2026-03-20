@@ -465,6 +465,10 @@ export type Database = {
     }
     Functions: {
       get_diretor_escola_ids: { Args: { _auth_id: string }; Returns: string[] }
+      get_diretor_visible_usuario_ids: {
+        Args: { _auth_id: string }
+        Returns: string[]
+      }
       get_professor_escola_ids: {
         Args: { _auth_id: string }
         Returns: string[]
