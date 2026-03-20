@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { cpfMask, maskCPF, validateCPF } from '@/lib/cpf';
 import { Badge } from '@/components/ui/badge';
+import { criarUsuario } from '@/lib/criar-usuario';
 
 interface RespRow {
   id: string;
@@ -64,17 +65,19 @@ export default function Responsaveis() {
     } else {
       const cpfClean = form.cpf.replace(/\D/g, '');
       if (!validateCPF(cpfClean)) { toast.error('CPF inválido.'); return; }
-      const { data: usr, error } = await supabase.from('usuarios').insert({
-        nome: form.nome, cpf: cpfClean, email: form.email || null, papel: 'RESPONSAVEL'
-      }).select().single();
-      if (error) {
-        toast.error(error.message.includes('duplicate') ? 'CPF já cadastrado.' : error.message);
+      try {
+        const result = await criarUsuario({
+          nome: form.nome,
+          cpf: cpfClean,
+          email: form.email || undefined,
+          papel: 'RESPONSAVEL',
+          telefone: form.telefone || undefined,
+        });
+        toast.success(`Responsável cadastrado. Login: ${result.email_login} | Senha: ${result.senha_temporaria}`);
+      } catch (err: any) {
+        toast.error(err.message);
         return;
       }
-      await supabase.from('responsaveis').insert({
-        usuario_id: (usr as any).id, telefone: form.telefone || null
-      });
-      toast.success('Responsável cadastrado.');
     }
     setOpen(false);
     load();
