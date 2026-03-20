@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { cpfMask, maskCPF, validateCPF } from '@/lib/cpf';
 import { Badge } from '@/components/ui/badge';
+import { criarUsuario } from '@/lib/criar-usuario';
 
 interface RespRow {
   id: string;
