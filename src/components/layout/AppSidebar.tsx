@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   School, Users, GraduationCap, BookOpen, UserCheck, UserCog,
-  LayoutDashboard, ClipboardList, Baby, X, Menu
+  LayoutDashboard, ClipboardList, Baby, X, Menu, CalendarDays, Wifi
 } from 'lucide-react';
 import { useAuthStore, type Papel } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
