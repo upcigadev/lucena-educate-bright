@@ -17,7 +17,6 @@ interface DiretorRow {
   escola_id: string;
   nome: string;
   cpf: string;
-  email: string;
   escola_nome: string;
 }
 
@@ -26,12 +25,12 @@ export default function Diretores() {
   const [escolas, setEscolas] = useState<{ id: string; nome: string }[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<DiretorRow | null>(null);
-  const [form, setForm] = useState({ nome: '', cpf: '', email: '', escola_id: '' });
+  const [form, setForm] = useState({ nome: '', cpf: '', escola_id: '' });
 
   const load = async () => {
     const { data: dirs } = await supabase
       .from('diretores')
-      .select('id, usuario_id, escola_id, usuarios(nome, cpf, email), escolas(nome)');
+      .select('id, usuario_id, escola_id, usuarios(nome, cpf), escolas(nome)');
     if (dirs) {
       setData(dirs.map((d: any) => ({
         id: d.id,
@@ -39,7 +38,6 @@ export default function Diretores() {
         escola_id: d.escola_id,
         nome: d.usuarios?.nome || '',
         cpf: d.usuarios?.cpf || '',
-        email: d.usuarios?.email || '',
         escola_nome: d.escolas?.nome || '',
       })));
     }
@@ -51,13 +49,13 @@ export default function Diretores() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ nome: '', cpf: '', email: '', escola_id: '' });
+    setForm({ nome: '', cpf: '', escola_id: '' });
     setOpen(true);
   };
 
   const openEdit = (row: DiretorRow) => {
     setEditing(row);
-    setForm({ nome: row.nome, cpf: row.cpf, email: row.email, escola_id: row.escola_id });
+    setForm({ nome: row.nome, cpf: row.cpf, escola_id: row.escola_id });
     setOpen(true);
   };
 
@@ -70,7 +68,7 @@ export default function Diretores() {
     if (!validateCPF(cpfClean)) { toast.error('CPF inválido.'); return; }
 
     if (editing) {
-      await supabase.from('usuarios').update({ nome: form.nome, email: form.email || null }).eq('id', editing.usuario_id);
+      await supabase.from('usuarios').update({ nome: form.nome }).eq('id', editing.usuario_id);
       await supabase.from('diretores').update({ escola_id: form.escola_id }).eq('id', editing.id);
       toast.success('Diretor atualizado.');
     } else {
@@ -78,7 +76,6 @@ export default function Diretores() {
         const result = await criarUsuario({
           nome: form.nome,
           cpf: cpfClean,
-          email: form.email || undefined,
           papel: 'DIRETOR',
           escola_id: form.escola_id,
         });
@@ -95,7 +92,6 @@ export default function Diretores() {
   const columns: Column<DiretorRow>[] = [
     { key: 'nome', header: 'Nome' },
     { key: 'cpf', header: 'CPF', render: (r) => maskCPF(r.cpf) },
-    { key: 'email', header: 'E-mail' },
     { key: 'escola_nome', header: 'Escola' },
   ];
 
@@ -118,10 +114,6 @@ export default function Diretores() {
                 <Input value={form.cpf} onChange={e => setForm({ ...form, cpf: cpfMask(e.target.value) })} placeholder="000.000.000-00" />
               </div>
             )}
-            <div className="space-y-2">
-              <Label>E-mail</Label>
-              <Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-            </div>
             <div className="space-y-2">
               <Label>Escola *</Label>
               <Select value={form.escola_id} onValueChange={v => setForm({ ...form, escola_id: v })}>
