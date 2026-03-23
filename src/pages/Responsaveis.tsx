@@ -24,7 +24,7 @@ export default function Responsaveis() {
   const [data, setData] = useState<RespRow[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<RespRow | null>(null);
-  const [form, setForm] = useState({ nome: '', cpf: '', email: '', telefone: '' });
+  const [form, setForm] = useState({ nome: '', cpf: '', telefone: '' });
 
   const load = async () => {
     const { data: resps } = await supabase
