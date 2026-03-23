@@ -35,7 +35,7 @@ export default function Alunos() {
   const [editing, setEditing] = useState<AlunoRow | null>(null);
   const [form, setForm] = useState({
     nome_completo: '', matricula: '', data_nascimento: '', escola_id: '', turma_id: '',
-    resp_nome: '', resp_cpf: '', resp_email: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
+    resp_nome: '', resp_cpf: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
   });
 
   const load = async () => {
@@ -58,7 +58,7 @@ export default function Alunos() {
     setEditing(null);
     setForm({
       nome_completo: '', matricula: '', data_nascimento: '', escola_id: '', turma_id: '',
-      resp_nome: '', resp_cpf: '', resp_email: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
+      resp_nome: '', resp_cpf: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
     });
     setOpen(true);
   };
@@ -68,7 +68,7 @@ export default function Alunos() {
     setForm({
       nome_completo: row.nome_completo, matricula: row.matricula,
       data_nascimento: row.data_nascimento || '', escola_id: row.escola_id, turma_id: row.turma_id || '',
-      resp_nome: '', resp_cpf: '', resp_email: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
+      resp_nome: '', resp_cpf: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
     });
     setOpen(true);
   };
@@ -88,7 +88,6 @@ export default function Alunos() {
         escola_id: form.escola_id,
       }).eq('id', editing.id);
       if (error) { toast.error(error.message); return; }
-      // Transfer history
       if (oldTurma !== newTurma) {
         if (oldTurma) {
           await supabase.from('aluno_turma_historico')
@@ -105,13 +104,12 @@ export default function Alunos() {
       }
       toast.success('Aluno atualizado.');
     } else {
-      // Create responsavel first
       let responsavel_id: string | null = null;
       if (form.resp_nome.trim() && form.resp_cpf) {
         const cpfClean = form.resp_cpf.replace(/\D/g, '');
         if (!validateCPF(cpfClean)) { toast.error('CPF do responsável inválido.'); return; }
         const { data: usr, error } = await supabase.from('usuarios').insert({
-          nome: form.resp_nome, cpf: cpfClean, email: form.resp_email || null, papel: 'RESPONSAVEL'
+          nome: form.resp_nome, cpf: cpfClean, papel: 'RESPONSAVEL'
         }).select().single();
         if (error) {
           toast.error(error.message.includes('duplicate') ? 'CPF do responsável já cadastrado.' : error.message);
@@ -133,13 +131,11 @@ export default function Alunos() {
         toast.error(error.message.includes('duplicate') ? 'Matrícula já cadastrada.' : error.message);
         return;
       }
-      // Link responsavel
       if (responsavel_id && aluno) {
         await supabase.from('aluno_responsaveis').insert({
           aluno_id: (aluno as any).id, responsavel_id, parentesco: form.resp_parentesco
         });
       }
-      // Turma history
       if (form.turma_id && aluno) {
         const turma = turmas.find(t => t.id === form.turma_id);
         await supabase.from('aluno_turma_historico').insert({
@@ -227,10 +223,6 @@ export default function Alunos() {
                   <div className="space-y-2">
                     <Label>CPF *</Label>
                     <Input value={form.resp_cpf} onChange={e => setForm({ ...form, resp_cpf: cpfMask(e.target.value) })} placeholder="000.000.000-00" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>E-mail</Label>
-                    <Input type="email" value={form.resp_email} onChange={e => setForm({ ...form, resp_email: e.target.value })} />
                   </div>
                   <div className="space-y-2">
                     <Label>Telefone</Label>

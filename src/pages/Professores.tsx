@@ -17,7 +17,6 @@ interface ProfRow {
   usuario_id: string;
   nome: string;
   cpf: string;
-  email: string;
   escolas: string[];
 }
 
@@ -32,14 +31,13 @@ export default function Professores() {
   const load = async () => {
     const { data: profs } = await supabase
       .from('professores')
-      .select('id, usuario_id, usuarios(nome, cpf, email), professor_escolas(escola_id, escolas(nome))');
+      .select('id, usuario_id, usuarios(nome, cpf), professor_escolas(escola_id, escolas(nome))');
     if (profs) {
       setData(profs.map((p: any) => ({
         id: p.id,
         usuario_id: p.usuario_id,
         nome: p.usuarios?.nome || '',
         cpf: p.usuarios?.cpf || '',
-        email: p.usuarios?.email || '',
         escolas: (p.professor_escolas || []).map((pe: any) => pe.escolas?.nome || ''),
       })));
     }
@@ -59,7 +57,6 @@ export default function Professores() {
   const openEdit = (row: ProfRow) => {
     setEditing(row);
     setForm({ nome: row.nome, cpf: row.cpf });
-    // Load escola IDs
     supabase.from('professor_escolas').select('escola_id').eq('professor_id', row.id)
       .then(({ data }) => setSelectedEscolas(data?.map((d: any) => d.escola_id) || []));
     setOpen(true);
@@ -82,7 +79,6 @@ export default function Professores() {
         const result = await criarUsuario({
           nome: form.nome,
           cpf: cpfClean,
-          email: form.email || undefined,
           papel: 'PROFESSOR',
           escolas_ids: selectedEscolas,
         });
@@ -108,7 +104,6 @@ export default function Professores() {
   const columns: Column<ProfRow>[] = [
     { key: 'nome', header: 'Nome' },
     { key: 'cpf', header: 'CPF', render: r => maskCPF(r.cpf) },
-    { key: 'email', header: 'E-mail' },
     { key: 'escolas', header: 'Escolas', render: r => (
       <div className="flex flex-wrap gap-1">
         {r.escolas.map((e, i) => <Badge key={i} variant="secondary" className="text-xs">{e}</Badge>)}
@@ -135,10 +130,6 @@ export default function Professores() {
                 <Input value={form.cpf} onChange={e => setForm({ ...form, cpf: cpfMask(e.target.value) })} placeholder="000.000.000-00" />
               </div>
             )}
-            <div className="space-y-2">
-              <Label>E-mail</Label>
-              <Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-            </div>
             <div className="space-y-2">
               <Label>Escolas *</Label>
               <div className="space-y-2 rounded-lg border p-3 max-h-48 overflow-y-auto">

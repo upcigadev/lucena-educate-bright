@@ -29,7 +29,7 @@ export default function Responsaveis() {
   const load = async () => {
     const { data: resps } = await supabase
       .from('responsaveis')
-      .select('id, usuario_id, telefone, usuarios(nome, cpf, email), aluno_responsaveis(alunos(nome_completo))');
+      .select('id, usuario_id, telefone, usuarios(nome, cpf), aluno_responsaveis(alunos(nome_completo))');
     if (resps) {
       setData(resps.map((r: any) => ({
         id: r.id,
@@ -69,7 +69,6 @@ export default function Responsaveis() {
         const result = await criarUsuario({
           nome: form.nome,
           cpf: cpfClean,
-          email: form.email || undefined,
           papel: 'RESPONSAVEL',
           telefone: form.telefone || undefined,
         });
@@ -111,16 +110,10 @@ export default function Responsaveis() {
               <Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} />
             </div>
             {!editing && (
-              <>
-                <div className="space-y-2">
-                  <Label>CPF *</Label>
-                  <Input value={form.cpf} onChange={e => setForm({ ...form, cpf: cpfMask(e.target.value) })} placeholder="000.000.000-00" />
-                </div>
-                <div className="space-y-2">
-                  <Label>E-mail</Label>
-                  <Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-                </div>
-              </>
+              <div className="space-y-2">
+                <Label>CPF *</Label>
+                <Input value={form.cpf} onChange={e => setForm({ ...form, cpf: cpfMask(e.target.value) })} placeholder="000.000.000-00" />
+              </div>
             )}
             <div className="space-y-2">
               <Label>Telefone</Label>
