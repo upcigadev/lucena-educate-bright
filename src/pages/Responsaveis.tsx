@@ -46,7 +46,7 @@ export default function Responsaveis() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ nome: '', cpf: '', email: '', telefone: '' });
+    setForm({ nome: '', cpf: '', telefone: '' });
     setOpen(true);
   };
 
