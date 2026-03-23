@@ -52,7 +52,7 @@ export default function Responsaveis() {
 
   const openEdit = (row: RespRow) => {
     setEditing(row);
-    setForm({ nome: row.nome, cpf: row.cpf, email: '', telefone: row.telefone || '' });
+    setForm({ nome: row.nome, cpf: row.cpf, telefone: row.telefone || '' });
     setOpen(true);
   };
 
