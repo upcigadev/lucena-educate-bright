@@ -70,7 +70,7 @@ export default function Diretores() {
     if (!validateCPF(cpfClean)) { toast.error('CPF inválido.'); return; }
 
     if (editing) {
-      await supabase.from('usuarios').update({ nome: form.nome, email: form.email || null }).eq('id', editing.usuario_id);
+      await supabase.from('usuarios').update({ nome: form.nome }).eq('id', editing.usuario_id);
       await supabase.from('diretores').update({ escola_id: form.escola_id }).eq('id', editing.id);
       toast.success('Diretor atualizado.');
     } else {
