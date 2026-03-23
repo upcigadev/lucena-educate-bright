@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +14,7 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { loadPerfil, setUser } = useAuthStore();
+  const { setUser } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,25 +27,27 @@ export default function Login() {
       return;
     }
 
-    // Look up auth email by CPF
-    const { data: email, error: lookupErr } = await supabase.rpc('get_login_email_by_cpf', { _cpf: cpfClean });
+    try {
+      if (!window.electronAPI) {
+        toast.error('Erro fatal: API do Electron não encontrada.');
+        setLoading(false);
+        return;
+      }
+      const res = await window.electronAPI.login(cpfClean, password);
 
-    if (lookupErr || !email) {
-      toast.error('CPF não encontrado ou usuário inativo.');
-      setLoading(false);
-      return;
-    }
+      if (!res.success || !res.user) {
+        toast.error('Credenciais incorretas ou usuário não encontrado.');
+        setLoading(false);
+        return;
+      }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      toast.error('Senha incorreta. Verifique e tente novamente.');
+      setUser(res.user);
+      navigate('/dashboard');
+    } catch (error) {
+      toast.error('Erro de comunicação com o banco local.');
+    } finally {
       setLoading(false);
-      return;
     }
-    setUser(data.user);
-    await loadPerfil(data.user.id);
-    navigate('/dashboard');
-    setLoading(false);
   };
 
   return (
