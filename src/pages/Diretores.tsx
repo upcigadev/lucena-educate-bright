@@ -26,7 +26,7 @@ export default function Diretores() {
   const [escolas, setEscolas] = useState<{ id: string; nome: string }[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<DiretorRow | null>(null);
-  const [form, setForm] = useState({ nome: '', cpf: '', email: '', escola_id: '' });
+  const [form, setForm] = useState({ nome: '', cpf: '', escola_id: '' });
 
   const load = async () => {
     const { data: dirs } = await supabase
