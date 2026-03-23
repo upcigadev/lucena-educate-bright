@@ -58,7 +58,7 @@ export default function Professores() {
 
   const openEdit = (row: ProfRow) => {
     setEditing(row);
-    setForm({ nome: row.nome, cpf: row.cpf, email: row.email });
+    setForm({ nome: row.nome, cpf: row.cpf });
     // Load escola IDs
     supabase.from('professor_escolas').select('escola_id').eq('professor_id', row.id)
       .then(({ data }) => setSelectedEscolas(data?.map((d: any) => d.escola_id) || []));
