@@ -51,7 +51,7 @@ export default function Diretores() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ nome: '', cpf: '', email: '', escola_id: '' });
+    setForm({ nome: '', cpf: '', escola_id: '' });
     setOpen(true);
   };
 
