@@ -115,6 +115,58 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('db:createStudent', (event, data) => {
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO students (name, matricula, class_id, guardian_id)
+        VALUES (?, ?, ?, ?) RETURNING id
+      `);
+      const row = stmt.get(data.name, data.matricula, data.class_id, data.guardian_id) as { id: string };
+      return { success: true, id: row.id };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('device:enrollUser', async (event, { ip, id, name, matricula }) => {
+    try {
+      const userPayload = {
+        object: 'users',
+        values: [{ name: name, registration: matricula }]
+      };
+      
+      const resUser = await fetch(`http://${ip}/create_objects.fcgi?session=`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userPayload)
+      });
+      
+      if (!resUser.ok) throw new Error('Falha HTTP ao criar utilizador no iDFace');
+      const dataUser = await resUser.json();
+      const deviceUserId = dataUser?.ids?.[0];
+
+      if (!deviceUserId) throw new Error('Aparelho não retornou o ID do utilizador.');
+
+      const enrollPayload = {
+        type: 'face',
+        user_id: deviceUserId,
+        save: true
+      };
+
+      const resEnroll = await fetch(`http://${ip}/remote_enroll.fcgi?session=`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(enrollPayload)
+      });
+
+      if (!resEnroll.ok) throw new Error('Falha HTTP ao iniciar câmara do iDFace');
+
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   createWindow();
 
   app.on('activate', () => {

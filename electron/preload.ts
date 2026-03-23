@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   login: (cpf: string, password: string) => ipcRenderer.invoke('auth:login', cpf, password),
+  createStudent: (data: any) => ipcRenderer.invoke('db:createStudent', data),
+  enrollUserDevice: (params: any) => ipcRenderer.invoke('device:enrollUser', params),
   onDeviceWebhook: (callback: (data: any) => void) => {
     const subscription = (event: any, data: any) => callback(data);
     ipcRenderer.on('device:webhook', subscription);

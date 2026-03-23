@@ -1,8 +1,10 @@
-import { contextBridge as r, ipcRenderer as n } from "electron";
-r.exposeInMainWorld("electronAPI", {
-  login: (o, e) => n.invoke("auth:login", o, e),
-  onDeviceWebhook: (o) => {
-    const e = (t, i) => o(i);
-    return n.on("device:webhook", e), () => n.removeListener("device:webhook", e);
+import { contextBridge as i, ipcRenderer as o } from "electron";
+i.exposeInMainWorld("electronAPI", {
+  login: (e, n) => o.invoke("auth:login", e, n),
+  createStudent: (e) => o.invoke("db:createStudent", e),
+  enrollUserDevice: (e) => o.invoke("device:enrollUser", e),
+  onDeviceWebhook: (e) => {
+    const n = (t, r) => e(r);
+    return o.on("device:webhook", n), () => o.removeListener("device:webhook", n);
   }
 });

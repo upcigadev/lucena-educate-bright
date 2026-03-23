@@ -234,7 +234,10 @@ export default function Alunos() {
 
             {/* ===== ABA BIOMETRIA ===== */}
             <TabsContent value="biometria">
-              <BiometriaTab />
+              <BiometriaTab
+                disabled={!form.nome_completo || !form.matricula}
+                aluno={{ nome: form.nome_completo, matricula: form.matricula, class_id: form.turma_id }} 
+              />
             </TabsContent>
           </Tabs>
         </SheetContent>
