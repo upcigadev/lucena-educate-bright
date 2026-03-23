@@ -14,10 +14,10 @@ import Diretores from '@/pages/Diretores';
 import Professores from '@/pages/Professores';
 import Alunos from '@/pages/Alunos';
 import Responsaveis from '@/pages/Responsaveis';
-import Frequencia from '@/pages/Frequencia';
+import EscolaDetalhe from '@/pages/EscolaDetalhe';
+import TurmaDetalhe from '@/pages/TurmaDetalhe';
 import IoTConfig from '@/pages/IoTConfig';
 import Justificativas from '@/pages/Justificativas';
-import FrequenciaTurma from '@/pages/FrequenciaTurma';
 import NotFound from '@/pages/NotFound';
 
 const queryClient = new QueryClient();
@@ -71,14 +71,14 @@ const App = () => (
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="escolas" element={<Escolas />} />
+            <Route path="escolas/:escolaId" element={<EscolaDetalhe />} />
+            <Route path="escolas/:escolaId/turma/:turmaId" element={<TurmaDetalhe />} />
             <Route path="diretores" element={<Diretores />} />
             <Route path="professores" element={<Professores />} />
             <Route path="alunos" element={<Alunos />} />
             <Route path="responsaveis" element={<Responsaveis />} />
-            <Route path="frequencia" element={<Frequencia />} />
             <Route path="iot-config" element={<IoTConfig />} />
             <Route path="justificativas" element={<Justificativas />} />
-            <Route path="frequencia-turma" element={<FrequenciaTurma />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
