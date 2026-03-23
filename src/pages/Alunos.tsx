@@ -8,9 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { cpfMask, maskCPF, validateCPF } from '@/lib/cpf';
+import { cpfMask, validateCPF } from '@/lib/cpf';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent } from '@/components/ui/card';
+import { Camera, ScanFace } from 'lucide-react';
 
 interface AlunoRow {
   id: string;
@@ -24,17 +26,20 @@ interface AlunoRow {
   turma_nome?: string;
 }
 
+interface Serie { id: string; nome: string; escola_id: string; }
 interface Turma { id: string; nome: string; serie_id: string; escola_id: string; }
 interface Escola { id: string; nome: string; }
 
 export default function Alunos() {
   const [alunos, setAlunos] = useState<AlunoRow[]>([]);
   const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [series, setSeries] = useState<Serie[]>([]);
   const [escolas, setEscolas] = useState<Escola[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AlunoRow | null>(null);
   const [form, setForm] = useState({
-    nome_completo: '', matricula: '', data_nascimento: '', escola_id: '', turma_id: '',
+    nome_completo: '', matricula: '', data_nascimento: '',
+    escola_id: '', serie_id: '', turma_id: '',
     resp_nome: '', resp_cpf: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
   });
 
@@ -48,6 +53,8 @@ export default function Alunos() {
     }
     const { data: t } = await supabase.from('turmas').select('id, nome, serie_id, escola_id').order('nome');
     setTurmas(t as any[] || []);
+    const { data: s } = await supabase.from('series').select('id, nome, escola_id').order('nome');
+    setSeries(s as any[] || []);
     const { data: e } = await supabase.from('escolas').select('id, nome').order('nome');
     setEscolas(e as any[] || []);
   };
@@ -57,7 +64,8 @@ export default function Alunos() {
   const openNew = () => {
     setEditing(null);
     setForm({
-      nome_completo: '', matricula: '', data_nascimento: '', escola_id: '', turma_id: '',
+      nome_completo: '', matricula: '', data_nascimento: '',
+      escola_id: '', serie_id: '', turma_id: '',
       resp_nome: '', resp_cpf: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
     });
     setOpen(true);
@@ -65,9 +73,12 @@ export default function Alunos() {
 
   const openEdit = (row: AlunoRow) => {
     setEditing(row);
+    // Find the serie_id from the turma
+    const turma = turmas.find(t => t.id === row.turma_id);
     setForm({
       nome_completo: row.nome_completo, matricula: row.matricula,
-      data_nascimento: row.data_nascimento || '', escola_id: row.escola_id, turma_id: row.turma_id || '',
+      data_nascimento: row.data_nascimento || '', escola_id: row.escola_id,
+      serie_id: turma?.serie_id || '', turma_id: row.turma_id || '',
       resp_nome: '', resp_cpf: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
     });
     setOpen(true);
@@ -104,10 +115,15 @@ export default function Alunos() {
       }
       toast.success('Aluno atualizado.');
     } else {
+      // Validate responsável CPF
+      if (!form.resp_cpf.trim()) {
+        toast.error('CPF do Responsável é obrigatório.'); return;
+      }
+      const cpfClean = form.resp_cpf.replace(/\D/g, '');
+      if (!validateCPF(cpfClean)) { toast.error('CPF do responsável inválido.'); return; }
+
       let responsavel_id: string | null = null;
-      if (form.resp_nome.trim() && form.resp_cpf) {
-        const cpfClean = form.resp_cpf.replace(/\D/g, '');
-        if (!validateCPF(cpfClean)) { toast.error('CPF do responsável inválido.'); return; }
+      if (form.resp_nome.trim()) {
         const { data: usr, error } = await supabase.from('usuarios').insert({
           nome: form.resp_nome, cpf: cpfClean, papel: 'RESPONSAVEL'
         }).select().single();
@@ -149,7 +165,9 @@ export default function Alunos() {
     load();
   };
 
-  const filteredTurmas = form.escola_id ? turmas.filter(t => t.escola_id === form.escola_id) : turmas;
+  // Cascading filters: Escola → Série → Turma
+  const filteredSeries = form.escola_id ? series.filter(s => s.escola_id === form.escola_id) : [];
+  const filteredTurmas = form.serie_id ? turmas.filter(t => t.serie_id === form.serie_id && t.escola_id === form.escola_id) : [];
 
   const columns: Column<AlunoRow>[] = [
     { key: 'nome_completo', header: 'Nome' },
@@ -172,7 +190,10 @@ export default function Alunos() {
             <TabsList className="w-full">
               <TabsTrigger value="aluno" className="flex-1">Dados do Aluno</TabsTrigger>
               {!editing && <TabsTrigger value="resp" className="flex-1">Responsável</TabsTrigger>}
+              <TabsTrigger value="biometria" className="flex-1">Biometria</TabsTrigger>
             </TabsList>
+
+            {/* ===== ABA DADOS DO ALUNO ===== */}
             <TabsContent value="aluno">
               <div className="space-y-4 mt-3">
                 <div className="space-y-2">
@@ -189,29 +210,63 @@ export default function Alunos() {
                   <Label>Data de Nascimento</Label>
                   <Input type="date" value={form.data_nascimento} onChange={e => setForm({ ...form, data_nascimento: e.target.value })} />
                 </div>
+
+                {/* Cascata: Escola → Série → Turma */}
                 <div className="space-y-2">
                   <Label>Escola *</Label>
-                  <Select value={form.escola_id} onValueChange={v => setForm({ ...form, escola_id: v, turma_id: '' })}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <Select value={form.escola_id} onValueChange={v => setForm({ ...form, escola_id: v, serie_id: '', turma_id: '' })}>
+                    <SelectTrigger><SelectValue placeholder="Selecione a escola" /></SelectTrigger>
                     <SelectContent>
                       {escolas.map(e => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
+                  <Label>Série *</Label>
+                  <Select
+                    value={form.serie_id}
+                    onValueChange={v => setForm({ ...form, serie_id: v, turma_id: '' })}
+                    disabled={!form.escola_id}
+                  >
+                    <SelectTrigger><SelectValue placeholder={form.escola_id ? 'Selecione a série' : 'Selecione a escola primeiro'} /></SelectTrigger>
+                    <SelectContent>
+                      {filteredSeries.map(s => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label>Turma</Label>
-                  <Select value={form.turma_id} onValueChange={v => setForm({ ...form, turma_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <Select
+                    value={form.turma_id}
+                    onValueChange={v => setForm({ ...form, turma_id: v })}
+                    disabled={!form.serie_id}
+                  >
+                    <SelectTrigger><SelectValue placeholder={form.serie_id ? 'Selecione a turma' : 'Selecione a série primeiro'} /></SelectTrigger>
                     <SelectContent>
                       {filteredTurmas.map(t => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* CPF do Responsável inline (obrigatório) */}
+                {!editing && (
+                  <div className="space-y-2">
+                    <Label>CPF do Responsável *</Label>
+                    <Input
+                      value={form.resp_cpf}
+                      onChange={e => setForm({ ...form, resp_cpf: cpfMask(e.target.value) })}
+                      placeholder="000.000.000-00"
+                    />
+                  </div>
+                )}
+
                 <Button onClick={save} className="w-full" disabled={!form.nome_completo.trim() || !form.escola_id}>
                   Salvar
                 </Button>
               </div>
             </TabsContent>
+
+            {/* ===== ABA RESPONSÁVEL ===== */}
             {!editing && (
               <TabsContent value="resp">
                 <div className="space-y-4 mt-3">
@@ -244,6 +299,43 @@ export default function Alunos() {
                 </div>
               </TabsContent>
             )}
+
+            {/* ===== ABA BIOMETRIA FACIAL ===== */}
+            <TabsContent value="biometria">
+              <div className="space-y-4 mt-3">
+                <Card className="border-dashed border-2">
+                  <CardContent className="p-6 space-y-5">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <ScanFace className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Biometria Facial</h4>
+                        <p className="text-xs text-muted-foreground">Capture a face do aluno para reconhecimento automático</p>
+                      </div>
+                    </div>
+
+                    {/* Camera feed placeholder */}
+                    <div className="relative aspect-[4/3] w-full rounded-xl bg-muted flex flex-col items-center justify-center gap-3 border border-border overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/10" />
+                      <Camera className="h-12 w-12 text-muted-foreground/40" />
+                      <p className="text-sm text-muted-foreground">Feed da câmera aparecerá aqui</p>
+                      {/* Scan guides */}
+                      <div className="absolute inset-8 border-2 border-dashed border-primary/20 rounded-full" />
+                    </div>
+
+                    <Button size="lg" className="w-full gap-2 text-base font-semibold h-12">
+                      <Camera className="h-5 w-5" />
+                      Iniciar Captura Facial
+                    </Button>
+
+                    <p className="text-xs text-muted-foreground text-center">
+                      Posicione o rosto do aluno dentro do guia oval e clique para capturar.
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
           </Tabs>
         </SheetContent>
       </Sheet>

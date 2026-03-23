@@ -21,6 +21,7 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Alunos', href: '/alunos', icon: Users },
     { label: 'Responsáveis', href: '/responsaveis', icon: Baby },
     { label: 'Frequência', href: '/frequencia', icon: CalendarDays },
+    { label: 'Chamada Turma', href: '/frequencia-turma', icon: ClipboardList },
     { label: 'Config. IoT', href: '/iot-config', icon: Wifi },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
   ],

@@ -17,6 +17,7 @@ import Responsaveis from '@/pages/Responsaveis';
 import Frequencia from '@/pages/Frequencia';
 import IoTConfig from '@/pages/IoTConfig';
 import Justificativas from '@/pages/Justificativas';
+import FrequenciaTurma from '@/pages/FrequenciaTurma';
 import NotFound from '@/pages/NotFound';
 
 const queryClient = new QueryClient();
@@ -77,6 +78,7 @@ const App = () => (
             <Route path="frequencia" element={<Frequencia />} />
             <Route path="iot-config" element={<IoTConfig />} />
             <Route path="justificativas" element={<Justificativas />} />
+            <Route path="frequencia-turma" element={<FrequenciaTurma />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
