@@ -128,6 +128,15 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('db:getStudents', () => {
+    try {
+      const stmt = db.prepare('SELECT * FROM students ORDER BY name');
+      return { success: true, data: stmt.all() };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('db:getSchools', () => {
     try {
       const stmt = db.prepare('SELECT * FROM schools ORDER BY name');

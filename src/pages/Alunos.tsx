@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable } from '@/components/shared/DataTable';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -32,24 +31,31 @@ export default function Alunos() {
   });
 
   const load = async () => {
-    const { data } = await supabase
-      .from('alunos')
-      .select('*, turmas(nome, serie_id, series(nome)), escolas(nome)')
-      .order('nome_completo');
-    if (data) {
-      setAlunos(data.map((a: any) => ({
-        ...a,
-        turma_nome: a.turmas?.nome || 'Sem turma',
-        serie_nome: a.turmas?.series?.nome || '',
-        escola_nome: a.escolas?.nome || '',
+    const resStuds = await window.electronAPI.getStudents();
+    if (resStuds.success && resStuds.data) {
+      setAlunos(resStuds.data.map((a: any) => ({
+        id: a.id,
+        nome_completo: a.name,
+        matricula: a.matricula,
+        escola_id: '',
+        turma_id: a.class_id,
+        turma_nome: 'Turma Padrão',
+        serie_nome: '',
+        escola_nome: 'Escola Padrão',
       })));
     }
-    const { data: t } = await supabase.from('turmas').select('id, nome, serie_id, escola_id').order('nome');
-    setTurmas(t as any[] || []);
-    const { data: s } = await supabase.from('series').select('id, nome, escola_id').order('nome');
-    setSeries(s as any[] || []);
-    const { data: e } = await supabase.from('escolas').select('id, nome').order('nome');
-    setEscolas(e as any[] || []);
+    
+    const resClasses = await window.electronAPI.getClasses();
+    if (resClasses.success && resClasses.data) {
+      setTurmas(resClasses.data as any[]);
+    }
+    
+    setSeries([]); // Mock array vazio para a UI não reclamar
+    
+    const resSchools = await window.electronAPI.getSchools();
+    if (resSchools.success && resSchools.data) {
+      setEscolas(resSchools.data);
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -82,69 +88,16 @@ export default function Alunos() {
     }
 
     if (editing) {
-      const oldTurma = editing.turma_id;
-      const newTurma = form.turma_id || null;
-      const { error } = await supabase.from('alunos').update({
-        nome_completo: form.nome_completo,
-        data_nascimento: form.data_nascimento || null,
-        turma_id: newTurma,
-        escola_id: form.escola_id,
-      }).eq('id', editing.id);
-      if (error) { toast.error(error.message); return; }
-      if (oldTurma !== newTurma) {
-        if (oldTurma) {
-          await supabase.from('aluno_turma_historico')
-            .update({ data_fim: new Date().toISOString() })
-            .eq('aluno_id', editing.id).is('data_fim', null);
-        }
-        if (newTurma) {
-          const turma = turmas.find(t => t.id === newTurma);
-          await supabase.from('aluno_turma_historico').insert({
-            aluno_id: editing.id, turma_id: newTurma,
-            turma_nome: turma?.nome || '', serie_nome: ''
-          });
-        }
-      }
-      toast.success('Aluno atualizado.');
+      toast.success('Edição de Alunos ainda não habilitada offline.');
     } else {
-      let responsavel_id: string | null = null;
-      if (form.resp_nome.trim() && form.resp_cpf.trim()) {
-        const cpfClean = form.resp_cpf.replace(/\D/g, '');
-        if (!validateCPF(cpfClean)) { toast.error('CPF do responsável inválido.'); return; }
-        const { data: usr, error } = await supabase.from('usuarios').insert({
-          nome: form.resp_nome, cpf: cpfClean, papel: 'RESPONSAVEL'
-        }).select().single();
-        if (error) {
-          toast.error(error.message.includes('duplicate') ? 'CPF do responsável já cadastrado.' : error.message);
-          return;
-        }
-        const { data: resp } = await supabase.from('responsaveis').insert({
-          usuario_id: (usr as any).id, telefone: form.resp_telefone || null
-        }).select().single();
-        if (resp) responsavel_id = (resp as any).id;
-      }
-
-      const { data: aluno, error } = await supabase.from('alunos').insert({
-        nome_completo: form.nome_completo, matricula: form.matricula,
-        data_nascimento: form.data_nascimento || null,
-        escola_id: form.escola_id, turma_id: form.turma_id || null,
-        responsavel_id
-      }).select().single();
-      if (error) {
-        toast.error(error.message.includes('duplicate') ? 'Matrícula já cadastrada.' : error.message);
+      const res = await window.electronAPI.createStudent({ 
+        name: form.nome_completo, 
+        matricula: form.matricula, 
+        class_id: form.turma_id 
+      });
+      if (!res.success) {
+        toast.error(res.error?.includes('UNIQUE') ? 'Matrícula já cadastrada.' : res.error);
         return;
-      }
-      if (responsavel_id && aluno) {
-        await supabase.from('aluno_responsaveis').insert({
-          aluno_id: (aluno as any).id, responsavel_id, parentesco: form.resp_parentesco
-        });
-      }
-      if (form.turma_id && aluno) {
-        const turma = turmas.find(t => t.id === form.turma_id);
-        await supabase.from('aluno_turma_historico').insert({
-          aluno_id: (aluno as any).id, turma_id: form.turma_id,
-          turma_nome: turma?.nome || '', serie_nome: ''
-        });
       }
       toast.success('Aluno cadastrado.');
     }
@@ -152,8 +105,7 @@ export default function Alunos() {
     load();
   };
 
-  const filteredSeries = form.escola_id ? series.filter(s => s.escola_id === form.escola_id) : [];
-  const filteredTurmas = form.serie_id ? turmas.filter(t => t.serie_id === form.serie_id && t.escola_id === form.escola_id) : [];
+  const filteredTurmas = form.escola_id ? turmas.filter((t: any) => t.school_id === form.escola_id) : [];
 
   const columns = getAlunoColumns();
 
@@ -202,16 +154,16 @@ export default function Alunos() {
                 <div className="space-y-2">
                   <Label>Série *</Label>
                   <Select value={form.serie_id} onValueChange={v => setForm({ ...form, serie_id: v, turma_id: '' })} disabled={!form.escola_id}>
-                    <SelectTrigger><SelectValue placeholder={form.escola_id ? 'Selecione a série' : 'Selecione a escola primeiro'} /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Selecione a série" /></SelectTrigger>
                     <SelectContent>
-                      {filteredSeries.map(s => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
+                      <SelectItem value="none">Série Padrão Única</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Turma</Label>
-                  <Select value={form.turma_id} onValueChange={v => setForm({ ...form, turma_id: v })} disabled={!form.serie_id}>
-                    <SelectTrigger><SelectValue placeholder={form.serie_id ? 'Selecione a turma' : 'Selecione a série primeiro'} /></SelectTrigger>
+                  <Select value={form.turma_id} onValueChange={v => setForm({ ...form, turma_id: v })} disabled={!form.escola_id}>
+                    <SelectTrigger><SelectValue placeholder={form.escola_id ? 'Selecione a turma' : 'Selecione a escola primeiro'} /></SelectTrigger>
                     <SelectContent>
                       {filteredTurmas.map(t => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
                     </SelectContent>

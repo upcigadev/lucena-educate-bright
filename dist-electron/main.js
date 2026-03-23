@@ -1,4 +1,4 @@
-import { app as We, ipcMain as ie, BrowserWindow as Pt } from "electron";
+import { app as We, ipcMain as Q, BrowserWindow as Pt } from "electron";
 import U from "path";
 import Bt, { fileURLToPath as Wc } from "url";
 import Ae from "fs";
@@ -34020,7 +34020,7 @@ function ku() {
   }
   return Gi;
 }
-var $e = TypeError, ju = Pa.inspect, Dn = typeof Map == "function" && Map.prototype, Xi = Object.getOwnPropertyDescriptor && Dn ? Object.getOwnPropertyDescriptor(Map.prototype, "size") : null, Ca = Dn && Xi && typeof Xi.get == "function" ? Xi.get : null, qs = Dn && Map.prototype.forEach, Ln = typeof Set == "function" && Set.prototype, Vi = Object.getOwnPropertyDescriptor && Ln ? Object.getOwnPropertyDescriptor(Set.prototype, "size") : null, za = Ln && Vi && typeof Vi.get == "function" ? Vi.get : null, Cs = Ln && Set.prototype.forEach, Eu = typeof WeakMap == "function" && WeakMap.prototype, Le = Eu ? WeakMap.prototype.has : null, Tu = typeof WeakSet == "function" && WeakSet.prototype, Me = Tu ? WeakSet.prototype.has : null, Su = typeof WeakRef == "function" && WeakRef.prototype, zs = Su ? WeakRef.prototype.deref : null, _u = Boolean.prototype.valueOf, qu = Object.prototype.toString, Cu = Function.prototype.toString, zu = String.prototype.match, Mn = String.prototype.slice, ce = String.prototype.replace, Au = String.prototype.toUpperCase, As = String.prototype.toLowerCase, cr = RegExp.prototype.test, Os = Array.prototype.concat, ee = Array.prototype.join, Ou = Array.prototype.slice, Fs = Math.floor, _n = typeof BigInt == "function" ? BigInt.prototype.valueOf : null, Wi = Object.getOwnPropertySymbols, qn = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? Symbol.prototype.toString : null, qe = typeof Symbol == "function" && typeof Symbol.iterator == "object", Ne = typeof Symbol == "function" && Symbol.toStringTag && (typeof Symbol.toStringTag === qe || !0) ? Symbol.toStringTag : null, pr = Object.prototype.propertyIsEnumerable, $s = (typeof Reflect == "function" ? Reflect.getPrototypeOf : Object.getPrototypeOf) || ([].__proto__ === Array.prototype ? function(a) {
+var $e = TypeError, ju = Pa.inspect, Dn = typeof Map == "function" && Map.prototype, Xi = Object.getOwnPropertyDescriptor && Dn ? Object.getOwnPropertyDescriptor(Map.prototype, "size") : null, Ca = Dn && Xi && typeof Xi.get == "function" ? Xi.get : null, qs = Dn && Map.prototype.forEach, Ln = typeof Set == "function" && Set.prototype, Vi = Object.getOwnPropertyDescriptor && Ln ? Object.getOwnPropertyDescriptor(Set.prototype, "size") : null, za = Ln && Vi && typeof Vi.get == "function" ? Vi.get : null, Cs = Ln && Set.prototype.forEach, Eu = typeof WeakMap == "function" && WeakMap.prototype, Le = Eu ? WeakMap.prototype.has : null, Tu = typeof WeakSet == "function" && WeakSet.prototype, Me = Tu ? WeakSet.prototype.has : null, Su = typeof WeakRef == "function" && WeakRef.prototype, zs = Su ? WeakRef.prototype.deref : null, _u = Boolean.prototype.valueOf, qu = Object.prototype.toString, Cu = Function.prototype.toString, zu = String.prototype.match, Mn = String.prototype.slice, ce = String.prototype.replace, Au = String.prototype.toUpperCase, As = String.prototype.toLowerCase, cr = RegExp.prototype.test, Os = Array.prototype.concat, ae = Array.prototype.join, Ou = Array.prototype.slice, Fs = Math.floor, _n = typeof BigInt == "function" ? BigInt.prototype.valueOf : null, Wi = Object.getOwnPropertySymbols, qn = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? Symbol.prototype.toString : null, qe = typeof Symbol == "function" && typeof Symbol.iterator == "object", Ne = typeof Symbol == "function" && Symbol.toStringTag && (typeof Symbol.toStringTag === qe || !0) ? Symbol.toStringTag : null, pr = Object.prototype.propertyIsEnumerable, $s = (typeof Reflect == "function" ? Reflect.getPrototypeOf : Object.getPrototypeOf) || ([].__proto__ === Array.prototype ? function(a) {
   return a.__proto__;
 } : null);
 function Is(a, e) {
@@ -34095,7 +34095,7 @@ var Cn = ju, Rs = Cn.custom, Ps = dr(Rs) ? Rs : null, lr = {
   }
   if (typeof e == "function" && !Bs(e)) {
     var c = Mu(e), x = ma(e, t);
-    return "[Function" + (c ? ": " + c : " (anonymous)") + "]" + (x.length > 0 ? " { " + ee.call(x, ", ") + " }" : "");
+    return "[Function" + (c ? ": " + c : " (anonymous)") + "]" + (x.length > 0 ? " { " + ae.call(x, ", ") + " }" : "");
   }
   if (dr(e)) {
     var d = qe ? ce.call(String(e), /^(Symbol\(.*\))_[^)]*$/, "$1") : qn.call(e);
@@ -34110,11 +34110,11 @@ var Cn = ju, Rs = Cn.custom, Ps = dr(Rs) ? Rs : null, lr = {
     if (e.length === 0)
       return "[]";
     var g = ma(e, t);
-    return u && !Ku(g) ? "[" + An(g, u) + "]" : "[ " + ee.call(g, ", ") + " ]";
+    return u && !Ku(g) ? "[" + An(g, u) + "]" : "[ " + ae.call(g, ", ") + " ]";
   }
   if (Ru(e)) {
     var h = ma(e, t);
-    return !("cause" in Error.prototype) && "cause" in e && !pr.call(e, "cause") ? "{ [" + String(e) + "] " + ee.call(Os.call("[cause]: " + t(e.cause), h), ", ") + " }" : h.length === 0 ? "[" + String(e) + "]" : "{ [" + String(e) + "] " + ee.call(h, ", ") + " }";
+    return !("cause" in Error.prototype) && "cause" in e && !pr.call(e, "cause") ? "{ [" + String(e) + "] " + ae.call(Os.call("[cause]: " + t(e.cause), h), ", ") + " }" : h.length === 0 ? "[" + String(e) + "]" : "{ [" + String(e) + "] " + ae.call(h, ", ") + " }";
   }
   if (typeof e == "object" && l) {
     if (Ps && typeof e[Ps] == "function" && Cn)
@@ -34153,8 +34153,8 @@ var Cn = ju, Rs = Cn.custom, Ps = dr(Rs) ? Rs : null, lr = {
   if (typeof globalThis < "u" && e === globalThis || typeof _a < "u" && e === _a)
     return "{ [object globalThis] }";
   if (!Iu(e) && !Bs(e)) {
-    var j = ma(e, t), S = $s ? $s(e) === Object.prototype : e instanceof Object || e.constructor === Object, T = e instanceof Object ? "" : "null prototype", E = !S && Ne && Object(e) === e && Ne in e ? Mn.call(le(e), 8, -1) : T ? "Object" : "", q = S || typeof e.constructor != "function" ? "" : e.constructor.name ? e.constructor.name + " " : "", C = q + (E || T ? "[" + ee.call(Os.call([], E || [], T || []), ": ") + "] " : "");
-    return j.length === 0 ? C + "{}" : u ? C + "{" + An(j, u) + "}" : C + "{ " + ee.call(j, ", ") + " }";
+    var j = ma(e, t), S = $s ? $s(e) === Object.prototype : e instanceof Object || e.constructor === Object, T = e instanceof Object ? "" : "null prototype", E = !S && Ne && Object(e) === e && Ne in e ? Mn.call(le(e), 8, -1) : T ? "Object" : "", q = S || typeof e.constructor != "function" ? "" : e.constructor.name ? e.constructor.name + " " : "", C = q + (E || T ? "[" + ae.call(Os.call([], E || [], T || []), ": ") + "] " : "");
+    return j.length === 0 ? C + "{}" : u ? C + "{" + An(j, u) + "}" : C + "{ " + ae.call(j, ", ") + " }";
   }
   return String(e);
 };
@@ -34333,7 +34333,7 @@ function Yi(a) {
   return a + " { ? }";
 }
 function Us(a, e, i, n) {
-  var o = n ? An(i, n) : ee.call(i, ", ");
+  var o = n ? An(i, n) : ae.call(i, ", ");
   return a + " (" + e + ") {" + o + "}";
 }
 function Ku(a) {
@@ -34348,12 +34348,12 @@ function Qu(a, e) {
   if (a.indent === "	")
     i = "	";
   else if (typeof a.indent == "number" && a.indent > 0)
-    i = ee.call(Array(a.indent + 1), " ");
+    i = ae.call(Array(a.indent + 1), " ");
   else
     return null;
   return {
     base: i,
-    prev: ee.call(Array(e + 1), i)
+    prev: ae.call(Array(e + 1), i)
   };
 }
 function An(a, e) {
@@ -34361,7 +34361,7 @@ function An(a, e) {
     return "";
   var i = `
 ` + e.prev + e.base;
-  return i + ee.call(a, "," + i) + `
+  return i + ae.call(a, "," + i) + `
 ` + e.prev;
 }
 function ma(a, e) {
@@ -34950,7 +34950,7 @@ function() {
   return Ya.get(e);
 }, On = function(e, i) {
   Ya.set(e, i);
-}, Q = function() {
+}, Z = function() {
   for (var a = [], e = 0; e < 256; ++e)
     a[a.length] = "%" + ((e < 16 ? "0" : "") + e.toString(16)).toUpperCase();
   return a;
@@ -35044,18 +35044,18 @@ function() {
         continue;
       }
       if (t < 128) {
-        r[r.length] = Q[t];
+        r[r.length] = Z[t];
         continue;
       }
       if (t < 2048) {
-        r[r.length] = Q[192 | t >> 6] + Q[128 | t & 63];
+        r[r.length] = Z[192 | t >> 6] + Z[128 | t & 63];
         continue;
       }
       if (t < 55296 || t >= 57344) {
-        r[r.length] = Q[224 | t >> 12] + Q[128 | t >> 6 & 63] + Q[128 | t & 63];
+        r[r.length] = Z[224 | t >> 12] + Z[128 | t >> 6 & 63] + Z[128 | t & 63];
         continue;
       }
-      u += 1, t = 65536 + ((t & 1023) << 10 | p.charCodeAt(u) & 1023), r[r.length] = Q[240 | t >> 18] + Q[128 | t >> 12 & 63] + Q[128 | t >> 6 & 63] + Q[128 | t & 63];
+      u += 1, t = 65536 + ((t & 1023) << 10 | p.charCodeAt(u) & 1023), r[r.length] = Z[240 | t >> 18] + Z[128 | t >> 12 & 63] + Z[128 | t >> 6 & 63] + Z[128 | t & 63];
     }
     m += r.join("");
   }
@@ -35109,8 +35109,8 @@ function() {
   repeat: function(e) {
     return e;
   }
-}, Z = Array.isArray, Ym = Array.prototype.push, Ar = function(a, e) {
-  Ym.apply(a, Z(e) ? e : [e]);
+}, J = Array.isArray, Ym = Array.prototype.push, Ar = function(a, e) {
+  Ym.apply(a, J(e) ? e : [e]);
 }, Km = Date.prototype.toISOString, et = Ge.default, R = {
   addQueryPrefix: !1,
   allowDots: !1,
@@ -35146,7 +35146,7 @@ function() {
     }
     typeof h.get(mn) > "u" && (w = 0);
   }
-  if (typeof r == "function" ? g = r(i, g) : g instanceof Date ? g = c(g) : n === "comma" && Z(g) && (g = ya.maybeMap(g, function(si) {
+  if (typeof r == "function" ? g = r(i, g) : g instanceof Date ? g = c(g) : n === "comma" && J(g) && (g = ya.maybeMap(g, function(si) {
     return si instanceof Date ? c(si) : si;
   })), g === null) {
     if (l)
@@ -35164,21 +35164,21 @@ function() {
   if (typeof g > "u")
     return T;
   var E;
-  if (n === "comma" && Z(g))
+  if (n === "comma" && J(g))
     v && p && (g = ya.maybeMap(g, p)), E = [{ value: g.length > 0 ? g.join(",") || null : void 0 }];
-  else if (Z(r))
+  else if (J(r))
     E = r;
   else {
     var q = Object.keys(g);
     E = u ? q.sort(u) : q;
   }
-  var C = f ? String(i).replace(/\./g, "%2E") : String(i), A = o && Z(g) && g.length === 1 ? C + "[]" : C;
-  if (s && Z(g) && g.length === 0)
+  var C = f ? String(i).replace(/\./g, "%2E") : String(i), A = o && J(g) && g.length === 1 ? C + "[]" : C;
+  if (s && J(g) && g.length === 0)
     return A + "[]";
   for (var M = 0; M < E.length; ++M) {
     var N = E[M], ue = typeof N == "object" && N && typeof N.value < "u" ? N.value : g[N];
     if (!(m && ue === null)) {
-      var oi = t && f ? String(N).replace(/\./g, "%2E") : String(N), Vc = Z(g) ? typeof n == "function" ? n(A, oi) : A : A + (t ? "." + oi : "[" + oi + "]");
+      var oi = t && f ? String(N).replace(/\./g, "%2E") : String(N), Vc = J(g) ? typeof n == "function" ? n(A, oi) : A : A + (t ? "." + oi : "[" + oi + "]");
       y.set(e, w);
       var lo = Cr();
       lo.set(mn, y), Ar(T, a(
@@ -35190,7 +35190,7 @@ function() {
         l,
         m,
         f,
-        n === "comma" && v && Z(g) ? null : p,
+        n === "comma" && v && J(g) ? null : p,
         r,
         u,
         t,
@@ -35223,7 +35223,7 @@ function() {
     n = e.format;
   }
   var o = Ge.formatters[n], s = R.filter;
-  (typeof e.filter == "function" || Z(e.filter)) && (s = e.filter);
+  (typeof e.filter == "function" || J(e.filter)) && (s = e.filter);
   var l;
   if (e.arrayFormat in zr ? l = e.arrayFormat : "indices" in e ? l = e.indices ? "indices" : "repeat" : l = R.arrayFormat, "commaRoundTrip" in e && typeof e.commaRoundTrip != "boolean")
     throw new TypeError("`commaRoundTrip` must be a boolean, or absent");
@@ -35251,7 +35251,7 @@ function() {
   };
 }, ex = function(a, e) {
   var i = a, n = Jm(e), o, s;
-  typeof n.filter == "function" ? (s = n.filter, i = s("", i)) : Z(n.filter) && (s = n.filter, o = s);
+  typeof n.filter == "function" ? (s = n.filter, i = s("", i)) : J(n.filter) && (s = n.filter, o = s);
   var l = [];
   if (typeof i != "object" || i === null)
     return "";
@@ -35282,7 +35282,7 @@ function() {
   }
   var c = l.join(n.delimiter), x = n.addQueryPrefix === !0 ? "?" : "";
   return n.charsetSentinel && (n.charset === "iso-8859-1" ? x += "utf8=%26%2310003%3B&" : x += "utf8=%E2%9C%93&"), c.length > 0 ? x + c : "";
-}, ae = qr, wa = Object.prototype.hasOwnProperty, xn = Array.isArray, O = {
+}, ie = qr, wa = Object.prototype.hasOwnProperty, xn = Array.isArray, O = {
   allowDots: !1,
   allowEmptyArrays: !1,
   allowPrototypes: !1,
@@ -35292,7 +35292,7 @@ function() {
   charsetSentinel: !1,
   comma: !1,
   decodeDotInKeys: !1,
-  decoder: ae.decode,
+  decoder: ie.decode,
   delimiter: "&",
   depth: 5,
   duplicates: "combine",
@@ -35331,7 +35331,7 @@ function() {
   for (f = 0; f < l.length; ++f)
     if (f !== m) {
       var r = l[f], u = r.indexOf("]="), t = u === -1 ? r.indexOf("=") : u + 1, c, x;
-      if (t === -1 ? (c = i.decoder(r, O.decoder, p, "key"), x = i.strictNullHandling ? null : "") : (c = i.decoder(r.slice(0, t), O.decoder, p, "key"), c !== null && (x = ae.maybeMap(
+      if (t === -1 ? (c = i.decoder(r, O.decoder, p, "key"), x = i.strictNullHandling ? null : "") : (c = i.decoder(r.slice(0, t), O.decoder, p, "key"), c !== null && (x = ie.maybeMap(
         Or(
           r.slice(t + 1),
           i,
@@ -35343,11 +35343,11 @@ function() {
       ))), x && i.interpretNumericEntities && p === "iso-8859-1" && (x = ax(String(x))), r.indexOf("[]=") > -1 && (x = xn(x) ? [x] : x), i.comma && xn(x) && x.length > i.arrayLimit) {
         if (i.throwOnLimitExceeded)
           throw new RangeError("Array limit exceeded. Only " + i.arrayLimit + " element" + (i.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
-        x = ae.combine([], x, i.arrayLimit, i.plainObjects);
+        x = ie.combine([], x, i.arrayLimit, i.plainObjects);
       }
       if (c !== null) {
         var d = wa.call(n, c);
-        d && (i.duplicates === "combine" || r.indexOf("[]=") > -1) ? n[c] = ae.combine(
+        d && (i.duplicates === "combine" || r.indexOf("[]=") > -1) ? n[c] = ie.combine(
           n[c],
           x,
           i.arrayLimit,
@@ -35365,7 +35365,7 @@ function() {
   for (var l = n ? e : Or(e, i, o), m = a.length - 1; m >= 0; --m) {
     var f, p = a[m];
     if (p === "[]" && i.parseArrays)
-      ae.isOverflow(l) ? f = l : f = i.allowEmptyArrays && (l === "" || i.strictNullHandling && l === null) ? [] : ae.combine(
+      ie.isOverflow(l) ? f = l : f = i.allowEmptyArrays && (l === "" || i.strictNullHandling && l === null) ? [] : ie.combine(
         [],
         l,
         i.arrayLimit,
@@ -35381,7 +35381,7 @@ function() {
       else {
         if (c && i.throwOnLimitExceeded)
           throw new RangeError("Array limit exceeded. Only " + i.arrayLimit + " element" + (i.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
-        c ? (f[t] = l, ae.markOverflow(f, t)) : u !== "__proto__" && (f[u] = l);
+        c ? (f[t] = l, ie.markOverflow(f, t)) : u !== "__proto__" && (f[u] = l);
       }
     }
     l = f;
@@ -35444,7 +35444,7 @@ function() {
     comma: typeof e.comma == "boolean" ? e.comma : O.comma,
     decodeDotInKeys: typeof e.decodeDotInKeys == "boolean" ? e.decodeDotInKeys : O.decodeDotInKeys,
     decoder: typeof e.decoder == "function" ? e.decoder : O.decoder,
-    delimiter: typeof e.delimiter == "string" || ae.isRegExp(e.delimiter) ? e.delimiter : O.delimiter,
+    delimiter: typeof e.delimiter == "string" || ie.isRegExp(e.delimiter) ? e.delimiter : O.delimiter,
     // eslint-disable-next-line no-implicit-coercion, no-extra-parens
     depth: typeof e.depth == "number" || e.depth === !1 ? +e.depth : O.depth,
     duplicates: n,
@@ -35464,9 +35464,9 @@ function() {
     return i.plainObjects ? { __proto__: null } : {};
   for (var n = typeof a == "string" ? ox(a, i) : a, o = i.plainObjects ? { __proto__: null } : {}, s = Object.keys(n), l = 0; l < s.length; ++l) {
     var m = s[l], f = rx(m, n[m], i, typeof a == "string");
-    o = ae.merge(o, f, i);
+    o = ie.merge(o, f, i);
   }
-  return i.allowSparse === !0 ? o : ae.compact(o);
+  return i.allowSparse === !0 ? o : ie.compact(o);
 }, lx = ex, ux = px, dx = Gn, Fr = {
   formats: dx,
   parse: ux,
@@ -48240,7 +48240,7 @@ const Zn = "/", Jn = (a) => a, Zr = /^[$_\p{ID_Start}]$/u, eo = /^[$\u200c\u200d
 function ff(a) {
   return a.replace(/[{}()\[\]+?!:*\\]/g, "\\$&");
 }
-function J(a) {
+function ee(a) {
   return a.replace(/[.+*?^${}()[\]|/\\]/g, "\\$&");
 }
 class Jr {
@@ -48399,7 +48399,7 @@ function ac(a, e = {}) {
       f.push(gf(c, i, l, t.originalPath));
   }
   let p = `^(?:${f.join("|")})`;
-  return s && (p += `(?:${J(i)}$)?`), p += n ? "$" : `(?=${J(i)}|$)`, { regexp: new RegExp(p, m), keys: l };
+  return s && (p += `(?:${ee(i)}$)?`), p += n ? "$" : `(?=${ee(i)}|$)`, { regexp: new RegExp(p, m), keys: l };
 }
 function ic(a, e) {
   if (Array.isArray(a))
@@ -48424,7 +48424,7 @@ function gf(a, e, i, n) {
   let o = "", s = "", l = !0;
   for (const m of a) {
     if (m.type === "text") {
-      o += J(m.value), s += m.value, l || (l = m.value.includes(e));
+      o += ee(m.value), s += m.value, l || (l = m.value.includes(e));
       continue;
     }
     if (m.type === "param" || m.type === "wildcard") {
@@ -48437,7 +48437,7 @@ function gf(a, e, i, n) {
   return o;
 }
 function yf(a, e) {
-  return e.length < 2 ? a.length < 2 ? `[^${J(a + e)}]` : `(?:(?!${J(a)})[^${J(e)}])` : a.length < 2 ? `(?:(?!${J(e)})[^${J(a)}])` : `(?:(?!${J(e)}|${J(a)})[\\s\\S])`;
+  return e.length < 2 ? a.length < 2 ? `[^${ee(a + e)}]` : `(?:(?!${ee(a)})[^${ee(e)}])` : a.length < 2 ? `(?:(?!${ee(e)})[^${ee(a)}])` : `(?:(?!${ee(e)}|${ee(a)})[\\s\\S])`;
 }
 function nc(a) {
   let e = "", i = 0;
@@ -74232,14 +74232,14 @@ function Rt() {
   }), process.env.VITE_DEV_SERVER_URL ? Ve.loadURL(process.env.VITE_DEV_SERVER_URL) : Ve.loadFile(U.join(wn, "../dist/index.html"));
 }
 We.whenReady().then(() => {
-  gh(), yh(), ie.handle("auth:login", (a, e, i) => {
+  gh(), yh(), Q.handle("auth:login", (a, e, i) => {
     try {
       const o = H.prepare("SELECT id, cpf, name, role FROM users WHERE cpf = ? AND password = ?").get(e, i);
       return { success: !!o, user: o };
     } catch (n) {
       return { success: !1, error: n.message };
     }
-  }), ie.handle("db:createStudent", (a, e) => {
+  }), Q.handle("db:createStudent", (a, e) => {
     try {
       return { success: !0, id: H.prepare(`
         INSERT INTO students (name, matricula, class_id, guardian_id)
@@ -74248,44 +74248,50 @@ We.whenReady().then(() => {
     } catch (i) {
       return { success: !1, error: i.message };
     }
-  }), ie.handle("db:getSchools", () => {
+  }), Q.handle("db:getStudents", () => {
+    try {
+      return { success: !0, data: H.prepare("SELECT * FROM students ORDER BY name").all() };
+    } catch (a) {
+      return { success: !1, error: a.message };
+    }
+  }), Q.handle("db:getSchools", () => {
     try {
       return { success: !0, data: H.prepare("SELECT * FROM schools ORDER BY name").all() };
     } catch (a) {
       return { success: !1, error: a.message };
     }
-  }), ie.handle("db:createSchool", (a, { name: e }) => {
+  }), Q.handle("db:createSchool", (a, { name: e }) => {
     try {
       return { success: !0, data: H.prepare("INSERT INTO schools (name) VALUES (?) RETURNING id, name").get(e) };
     } catch (i) {
       return { success: !1, error: i.message };
     }
-  }), ie.handle("db:getClasses", (a, e) => {
+  }), Q.handle("db:getClasses", (a, e) => {
     try {
       let i;
       return e ? (i = H.prepare("SELECT * FROM classes WHERE school_id = ? ORDER BY name"), { success: !0, data: i.all(e) }) : (i = H.prepare("SELECT * FROM classes ORDER BY name"), { success: !0, data: i.all() });
     } catch (i) {
       return { success: !1, error: i.message };
     }
-  }), ie.handle("db:createClass", (a, { name: e, school_id: i }) => {
+  }), Q.handle("db:createClass", (a, { name: e, school_id: i }) => {
     try {
       return { success: !0, data: H.prepare("INSERT INTO classes (name, school_id) VALUES (?, ?) RETURNING id, name, school_id").get(e, i) };
     } catch (n) {
       return { success: !1, error: n.message };
     }
-  }), ie.handle("db:getUsersByRole", (a, e) => {
+  }), Q.handle("db:getUsersByRole", (a, e) => {
     try {
       return { success: !0, data: H.prepare("SELECT id, cpf, name, role FROM users WHERE role = ? ORDER BY name").all(e) };
     } catch (i) {
       return { success: !1, error: i.message };
     }
-  }), ie.handle("db:createUser", (a, { cpf: e, name: i, password: n, role: o }) => {
+  }), Q.handle("db:createUser", (a, { cpf: e, name: i, password: n, role: o }) => {
     try {
       return { success: !0, data: H.prepare("INSERT INTO users (cpf, name, password, role) VALUES (?, ?, ?, ?) RETURNING id, cpf, name, role").get(e, i, n, o) };
     } catch (s) {
       return { success: !1, error: s.message };
     }
-  }), ie.handle("device:enrollUser", async (a, { ip: e, id: i, name: n, matricula: o }) => {
+  }), Q.handle("device:enrollUser", async (a, { ip: e, id: i, name: n, matricula: o }) => {
     var s;
     try {
       const l = {
