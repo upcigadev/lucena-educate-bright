@@ -28,21 +28,21 @@ export default function Diretores() {
   const [form, setForm] = useState({ nome: '', cpf: '', escola_id: '' });
 
   const load = async () => {
-    const { data: dirs } = await supabase
-      .from('diretores')
-      .select('id, usuario_id, escola_id, usuarios(nome, cpf), escolas(nome)');
-    if (dirs) {
-      setData(dirs.map((d: any) => ({
+    const res = await window.electronAPI.getUsersByRole('diretor');
+    if (res.success && res.data) {
+      setData(res.data.map((d: any) => ({
         id: d.id,
-        usuario_id: d.usuario_id,
-        escola_id: d.escola_id,
-        nome: d.usuarios?.nome || '',
-        cpf: d.usuarios?.cpf || '',
-        escola_nome: d.escolas?.nome || '',
+        usuario_id: d.id,
+        escola_id: d.escola_id || '',
+        nome: d.name,
+        cpf: d.cpf,
+        escola_nome: d.escolas?.nome || 'Escola Padrão',
       })));
     }
-    const { data: e } = await supabase.from('escolas').select('id, nome').order('nome');
-    setEscolas(e as any[] || []);
+    const escRes = await window.electronAPI.getSchools();
+    if (escRes.success && escRes.data) {
+      setEscolas(escRes.data);
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -68,9 +68,7 @@ export default function Diretores() {
     if (!validateCPF(cpfClean)) { toast.error('CPF inválido.'); return; }
 
     if (editing) {
-      await supabase.from('usuarios').update({ nome: form.nome }).eq('id', editing.usuario_id);
-      await supabase.from('diretores').update({ escola_id: form.escola_id }).eq('id', editing.id);
-      toast.success('Diretor atualizado.');
+      toast.success('Edição de Pessoas ainda não habilitada offline.');
     } else {
       try {
         const result = await criarUsuario({

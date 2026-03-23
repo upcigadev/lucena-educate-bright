@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface CriarUsuarioPayload {
   nome: string;
@@ -23,17 +23,29 @@ interface CriarUsuarioResponse {
 }
 
 export async function criarUsuario(payload: CriarUsuarioPayload): Promise<CriarUsuarioResponse> {
-  const { data, error } = await supabase.functions.invoke('criar-usuario', {
-    body: payload,
+  const defaultPassword = payload.senha || '123456';
+  
+  const res = await window.electronAPI.createUser({
+    cpf: payload.cpf,
+    name: payload.nome,
+    role: payload.papel.toLowerCase(),
+    password: defaultPassword
   });
 
-  if (error) {
-    throw new Error(error.message || 'Erro ao chamar Edge Function');
+  if (!res.success) {
+    if (res.error?.includes('UNIQUE')) {
+      throw new Error('CPF já cadastrado.');
+    }
+    throw new Error(res.error || 'Erro ao criar usuário');
   }
 
-  if (data?.error) {
-    throw new Error(data.error);
-  }
-
-  return data as CriarUsuarioResponse;
+  return {
+    success: true,
+    usuario_id: res.data?.id,
+    auth_id: res.data?.id,
+    email_login: payload.cpf,
+    senha_temporaria: defaultPassword,
+    papel: payload.papel,
+    role_record: {}
+  };
 }

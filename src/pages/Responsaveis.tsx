@@ -27,17 +27,15 @@ export default function Responsaveis() {
   const [form, setForm] = useState({ nome: '', cpf: '', telefone: '' });
 
   const load = async () => {
-    const { data: resps } = await supabase
-      .from('responsaveis')
-      .select('id, usuario_id, telefone, usuarios(nome, cpf), aluno_responsaveis(alunos(nome_completo))');
-    if (resps) {
-      setData(resps.map((r: any) => ({
+    const res = await window.electronAPI.getUsersByRole('responsavel');
+    if (res.success && res.data) {
+      setData(res.data.map((r: any) => ({
         id: r.id,
-        usuario_id: r.usuario_id,
-        nome: r.usuarios?.nome || '',
-        cpf: r.usuarios?.cpf || '',
-        telefone: r.telefone,
-        alunos: (r.aluno_responsaveis || []).map((ar: any) => ar.alunos?.nome_completo || ''),
+        usuario_id: r.id,
+        nome: r.name,
+        cpf: r.cpf,
+        telefone: r.telefone || null,
+        alunos: [],
       })));
     }
   };
@@ -59,9 +57,7 @@ export default function Responsaveis() {
   const save = async () => {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório.'); return; }
     if (editing) {
-      await supabase.from('usuarios').update({ nome: form.nome }).eq('id', editing.usuario_id);
-      await supabase.from('responsaveis').update({ telefone: form.telefone || null }).eq('id', editing.id);
-      toast.success('Responsável atualizado.');
+      toast.success('Edição de Pessoas ainda não habilitada offline.');
     } else {
       const cpfClean = form.cpf.replace(/\D/g, '');
       if (!validateCPF(cpfClean)) { toast.error('CPF inválido.'); return; }

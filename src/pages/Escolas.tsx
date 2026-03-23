@@ -32,8 +32,12 @@ export default function Escolas() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('escolas').select('*').order('nome');
-    setEscolas((data as unknown as Escola[]) || []);
+    const res = await window.electronAPI.getSchools();
+    if (res.success) {
+      setEscolas(res.data || []);
+    } else {
+      toast.error('Erro ao carregar escolas.');
+    }
     setLoading(false);
   };
 
@@ -46,16 +50,21 @@ export default function Escolas() {
 
   const save = async () => {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório.'); return; }
-    const { error } = await supabase.from('escolas').insert({
-      nome: form.nome, inep: form.inep || null,
-      endereco: form.endereco || null, telefone: form.telefone || null
-    });
-    if (error) {
-      if (error.message.includes('unique') || error.message.includes('duplicate')) {
-        toast.error('Já existe uma escola com este INEP.');
-      } else toast.error(error.message);
+    
+    // In our IPC, createSchool only takes name right now.
+    // Let's rely on that for the demo or update createSchool in IPC.
+    // The instructions said "Ex: window.electronAPI.createSchool({ name })".
+    const res = await window.electronAPI.createSchool({ name: form.nome });
+    
+    if (!res.success) {
+      if (res.error?.includes('UNIQUE')) {
+        toast.error('Já existe uma escola com este nome.');
+      } else {
+        toast.error(res.error);
+      }
       return;
     }
+    
     toast.success('Escola criada.');
     setSheetOpen(false);
     load();

@@ -128,6 +128,69 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('db:getSchools', () => {
+    try {
+      const stmt = db.prepare('SELECT * FROM schools ORDER BY name');
+      return { success: true, data: stmt.all() };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('db:createSchool', (event, { name }) => {
+    try {
+      const stmt = db.prepare('INSERT INTO schools (name) VALUES (?) RETURNING id, name');
+      const row = stmt.get(name);
+      return { success: true, data: row };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('db:getClasses', (event, schoolId) => {
+    try {
+      let stmt;
+      if (schoolId) {
+        stmt = db.prepare('SELECT * FROM classes WHERE school_id = ? ORDER BY name');
+        return { success: true, data: stmt.all(schoolId) };
+      } else {
+        stmt = db.prepare('SELECT * FROM classes ORDER BY name');
+        return { success: true, data: stmt.all() };
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('db:createClass', (event, { name, school_id }) => {
+    try {
+      const stmt = db.prepare('INSERT INTO classes (name, school_id) VALUES (?, ?) RETURNING id, name, school_id');
+      const row = stmt.get(name, school_id);
+      return { success: true, data: row };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('db:getUsersByRole', (event, role) => {
+    try {
+      const stmt = db.prepare('SELECT id, cpf, name, role FROM users WHERE role = ? ORDER BY name');
+      return { success: true, data: stmt.all(role) };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('db:createUser', (event, { cpf, name, password, role }) => {
+    try {
+      const stmt = db.prepare('INSERT INTO users (cpf, name, password, role) VALUES (?, ?, ?, ?) RETURNING id, cpf, name, role');
+      const row = stmt.get(cpf, name, password, role);
+      return { success: true, data: row };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('device:enrollUser', async (event, { ip, id, name, matricula }) => {
     try {
       const userPayload = {
