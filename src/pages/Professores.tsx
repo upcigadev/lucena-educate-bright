@@ -92,7 +92,7 @@ export default function Professores() {
         return;
       }
     } else {
-      await supabase.from('usuarios').update({ nome: form.nome, email: form.email || null }).eq('id', editing.usuario_id);
+      await supabase.from('usuarios').update({ nome: form.nome }).eq('id', editing.usuario_id);
       await supabase.from('professor_escolas').delete().eq('professor_id', editing.id);
       if (selectedEscolas.length > 0) {
         await supabase.from('professor_escolas').insert(
