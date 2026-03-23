@@ -1,10 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   School, Users, GraduationCap, BookOpen, UserCheck, UserCog,
-  LayoutDashboard, ClipboardList, Baby, X, Menu, CalendarDays, Wifi
+  LayoutDashboard, ClipboardList, Baby, X, ChevronLeft, ChevronRight, Wifi
 } from 'lucide-react';
 import { useAuthStore, type Papel } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface NavItem {
   label: string;
@@ -27,14 +28,12 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Séries e Turmas', href: '/series', icon: BookOpen },
     { label: 'Alunos', href: '/alunos', icon: Users },
-    { label: 'Frequência', href: '/frequencia', icon: CalendarDays },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
   ],
   PROFESSOR: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Minhas Turmas', href: '/turmas', icon: BookOpen },
     { label: 'Alunos', href: '/alunos', icon: Users },
-    { label: 'Frequência', href: '/frequencia', icon: CalendarDays },
   ],
   RESPONSAVEL: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -46,9 +45,11 @@ const menuByPapel: Record<Papel, NavItem[]> = {
 interface Props {
   open: boolean;
   onClose: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
-export function AppSidebar({ open, onClose }: Props) {
+export function AppSidebar({ open, onClose, collapsed, onToggleCollapse }: Props) {
   const { perfil } = useAuthStore();
   const location = useLocation();
   const items = perfil ? menuByPapel[perfil.papel] : [];
@@ -60,28 +61,43 @@ export function AppSidebar({ open, onClose }: Props) {
       )}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-sidebar text-sidebar-foreground transition-transform duration-300 md:translate-x-0 md:static md:z-auto',
-          open ? 'translate-x-0' : '-translate-x-full'
+          'fixed inset-y-0 left-0 z-50 flex h-full flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 ease-in-out md:static md:z-auto',
+          open ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+          collapsed ? 'w-[68px]' : 'w-64'
         )}
       >
-        <div className="flex h-16 items-center justify-between px-5 border-b border-sidebar-border">
-          <Link to="/dashboard" className="flex items-center gap-2.5" onClick={onClose}>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary">
-              <School className="h-4 w-4 text-sidebar-primary-foreground" />
-            </div>
-            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
-              Lucena Educacional
-            </span>
-          </Link>
+        {/* Header */}
+        <div className={cn(
+          'flex h-16 items-center border-b border-sidebar-border shrink-0',
+          collapsed ? 'justify-center px-2' : 'justify-between px-5'
+        )}>
+          {!collapsed && (
+            <Link to="/dashboard" className="flex items-center gap-2.5" onClick={onClose}>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary">
+                <School className="h-4 w-4 text-sidebar-primary-foreground" />
+              </div>
+              <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+                Lucena Educacional
+              </span>
+            </Link>
+          )}
+          {collapsed && (
+            <Link to="/dashboard" onClick={onClose}>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary">
+                <School className="h-4 w-4 text-sidebar-primary-foreground" />
+              </div>
+            </Link>
+          )}
           <button className="md:hidden text-sidebar-muted hover:text-sidebar-foreground" onClick={onClose}>
             <X className="h-5 w-5" />
           </button>
         </div>
 
+        {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {items.map((item) => {
             const active = location.pathname.startsWith(item.href);
-            return (
+            const linkContent = (
               <Link
                 key={item.href}
                 to={item.href}
@@ -90,20 +106,45 @@ export function AppSidebar({ open, onClose }: Props) {
                   'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                   active
                     ? 'bg-sidebar-accent text-sidebar-primary'
-                    : 'text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                    : 'text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground',
+                  collapsed && 'justify-center px-0'
                 )}
               >
-                <item.icon className="h-4.5 w-4.5 shrink-0" />
-                {item.label}
+                <item.icon className="h-[18px] w-[18px] shrink-0" />
+                {!collapsed && item.label}
               </Link>
             );
+
+            if (collapsed) {
+              return (
+                <Tooltip key={item.href} delayDuration={0}>
+                  <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                  <TooltipContent side="right" className="text-xs">
+                    {item.label}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
+
+            return linkContent;
           })}
         </nav>
 
-        <div className="border-t border-sidebar-border px-4 py-3">
-          <p className="text-xs text-sidebar-muted truncate">{perfil?.nome}</p>
-          <p className="text-[11px] text-sidebar-muted/60 truncate">{perfil?.papel}</p>
-        </div>
+        {/* Footer */}
+        {!collapsed && (
+          <div className="border-t border-sidebar-border px-4 py-3 shrink-0">
+            <p className="text-xs text-sidebar-muted truncate">{perfil?.nome}</p>
+            <p className="text-[11px] text-sidebar-muted/60 truncate">{perfil?.papel}</p>
+          </div>
+        )}
+
+        {/* Collapse toggle — desktop only */}
+        <button
+          onClick={onToggleCollapse}
+          className="hidden md:flex h-10 items-center justify-center border-t border-sidebar-border text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors shrink-0"
+        >
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </button>
       </aside>
     </>
   );
