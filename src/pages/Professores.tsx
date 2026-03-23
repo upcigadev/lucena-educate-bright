@@ -51,7 +51,7 @@ export default function Professores() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ nome: '', cpf: '', email: '' });
+    setForm({ nome: '', cpf: '' });
     setSelectedEscolas([]);
     setOpen(true);
   };
