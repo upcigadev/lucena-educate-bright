@@ -26,7 +26,7 @@ export default function Professores() {
   const [escolas, setEscolas] = useState<{ id: string; nome: string }[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ProfRow | null>(null);
-  const [form, setForm] = useState({ nome: '', cpf: '', email: '' });
+  const [form, setForm] = useState({ nome: '', cpf: '' });
   const [selectedEscolas, setSelectedEscolas] = useState<string[]>([]);
 
   const load = async () => {
