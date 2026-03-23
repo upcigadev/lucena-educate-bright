@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { School, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { cpfMask } from '@/lib/cpf';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [cpf, setCpf] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -19,9 +20,26 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    const cpfClean = cpf.replace(/\D/g, '');
+    if (cpfClean.length !== 11) {
+      toast.error('CPF inválido. Digite os 11 dígitos.');
+      setLoading(false);
+      return;
+    }
+
+    // Look up auth email by CPF
+    const { data: email, error: lookupErr } = await supabase.rpc('get_login_email_by_cpf', { _cpf: cpfClean });
+
+    if (lookupErr || !email) {
+      toast.error('CPF não encontrado ou usuário inativo.');
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      toast.error('Credenciais inválidas. Verifique e-mail e senha.');
+      toast.error('Senha incorreta. Verifique e tente novamente.');
       setLoading(false);
       return;
     }
@@ -46,15 +64,16 @@ export default function Login() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">E-mail</Label>
+            <Label htmlFor="cpf">CPF</Label>
             <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="seu@email.com"
+              id="cpf"
+              type="text"
+              inputMode="numeric"
+              value={cpf}
+              onChange={(e) => setCpf(cpfMask(e.target.value))}
+              placeholder="000.000.000-00"
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </div>
           <div className="space-y-2">

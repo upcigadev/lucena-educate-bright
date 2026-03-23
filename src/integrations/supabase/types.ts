@@ -642,6 +642,7 @@ export type Database = {
         Args: { _auth_id: string }
         Returns: string[]
       }
+      get_login_email_by_cpf: { Args: { _cpf: string }; Returns: string }
       get_professor_escola_ids: {
         Args: { _auth_id: string }
         Returns: string[]
