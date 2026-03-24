@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { supabase } from '@/integrations/supabase/client';
-import type { User } from '@supabase/supabase-js';
+import { db } from '@/lib/mock-db';
 
 export type Papel = 'SECRETARIA' | 'DIRETOR' | 'PROFESSOR' | 'RESPONSAVEL';
 
@@ -14,12 +13,18 @@ export interface UsuarioPerfil {
   auth_id: string;
 }
 
+// Minimal User type to replace Supabase User
+export interface AppUser {
+  id: string;
+  email?: string;
+}
+
 interface AuthState {
-  user: User | null;
+  user: AppUser | null;
   perfil: UsuarioPerfil | null;
   escolaAtiva: string | null;
   loading: boolean;
-  setUser: (user: User | null) => void;
+  setUser: (user: AppUser | null) => void;
   setPerfil: (perfil: UsuarioPerfil | null) => void;
   setEscolaAtiva: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
@@ -41,17 +46,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   setLoading: (loading) => set({ loading }),
   logout: async () => {
-    await supabase.auth.signOut();
+    // TODO: Replace with actual auth signout
     localStorage.removeItem('escola_ativa');
+    localStorage.removeItem('auth_user');
     set({ user: null, perfil: null, escolaAtiva: null });
   },
   loadPerfil: async (authId: string) => {
-    const { data } = await supabase
-      .from('usuarios')
-      .select('*')
-      .eq('auth_id', authId)
-      .eq('ativo', true)
-      .single();
+    // TODO: Replace with actual SQLite query
+    const { data } = db.usuarios.getByAuthId(authId);
     if (data) {
       set({ perfil: data as unknown as UsuarioPerfil });
     }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
+import { db } from '@/lib/mock-db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,23 +28,25 @@ export default function Login() {
       return;
     }
 
-    // Look up auth email by CPF
-    const { data: email, error: lookupErr } = await supabase.rpc('get_login_email_by_cpf', { _cpf: cpfClean });
+    // TODO: Replace with actual SQLite auth
+    // For now, find user by CPF in mock data
+    const { data: usuarios } = db.usuarios.getByAuthId(''); // won't match
+    // Lookup by CPF from mock
+    const { mockUsuarios } = await import('@/lib/mock-db');
+    const usuario = mockUsuarios.find(u => u.cpf === cpfClean && u.ativo);
 
-    if (lookupErr || !email) {
+    if (!usuario) {
       toast.error('CPF não encontrado ou usuário inativo.');
       setLoading(false);
       return;
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      toast.error('Senha incorreta. Verifique e tente novamente.');
-      setLoading(false);
-      return;
-    }
-    setUser(data.user);
-    await loadPerfil(data.user.id);
+    // TODO: Validate password against actual auth system
+    // For now accept any password
+    const appUser = { id: usuario.auth_id, email: usuario.email || undefined };
+    localStorage.setItem('auth_user', JSON.stringify(appUser));
+    setUser(appUser);
+    await loadPerfil(usuario.auth_id);
     navigate('/dashboard');
     setLoading(false);
   };

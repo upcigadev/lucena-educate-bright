@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+// TODO: Replace with actual SQLite user creation logic
 
 interface CriarUsuarioPayload {
   nome: string;
@@ -23,17 +23,17 @@ interface CriarUsuarioResponse {
 }
 
 export async function criarUsuario(payload: CriarUsuarioPayload): Promise<CriarUsuarioResponse> {
-  const { data, error } = await supabase.functions.invoke('criar-usuario', {
-    body: payload,
-  });
-
-  if (error) {
-    throw new Error(error.message || 'Erro ao chamar Edge Function');
-  }
-
-  if (data?.error) {
-    throw new Error(data.error);
-  }
-
-  return data as CriarUsuarioResponse;
+  // TODO: Implement actual user creation with SQLite
+  console.log('TODO: criarUsuario', payload);
+  
+  const id = crypto.randomUUID();
+  return {
+    success: true,
+    usuario_id: id,
+    auth_id: id,
+    email_login: `${payload.cpf}@sistema.local`,
+    senha_temporaria: 'temp1234',
+    papel: payload.papel,
+    role_record: null,
+  };
 }
