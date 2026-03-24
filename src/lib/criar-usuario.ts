@@ -1,4 +1,4 @@
-import { toast } from 'sonner';
+// TODO: Replace with actual SQLite user creation logic
 
 interface CriarUsuarioPayload {
   nome: string;
@@ -23,29 +23,17 @@ interface CriarUsuarioResponse {
 }
 
 export async function criarUsuario(payload: CriarUsuarioPayload): Promise<CriarUsuarioResponse> {
-  const defaultPassword = payload.senha || '123456';
+  // TODO: Implement actual user creation with SQLite
+  console.log('TODO: criarUsuario', payload);
   
-  const res = await window.electronAPI.createUser({
-    cpf: payload.cpf,
-    name: payload.nome,
-    role: payload.papel.toLowerCase(),
-    password: defaultPassword
-  });
-
-  if (!res.success) {
-    if (res.error?.includes('UNIQUE')) {
-      throw new Error('CPF já cadastrado.');
-    }
-    throw new Error(res.error || 'Erro ao criar usuário');
-  }
-
+  const id = crypto.randomUUID();
   return {
     success: true,
-    usuario_id: res.data?.id,
-    auth_id: res.data?.id,
-    email_login: payload.cpf,
-    senha_temporaria: defaultPassword,
+    usuario_id: id,
+    auth_id: id,
+    email_login: `${payload.cpf}@sistema.local`,
+    senha_temporaria: 'temp1234',
     papel: payload.papel,
-    role_record: {}
+    role_record: null,
   };
 }

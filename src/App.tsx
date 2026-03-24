@@ -1,10 +1,9 @@
 import { useEffect, ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { AppLayout } from '@/components/layout/AppLayout';
 import Login from '@/pages/Login';
@@ -26,25 +25,14 @@ function AuthGuard({ children }: { children: ReactNode }) {
   const { user, loading, setUser, setLoading, loadPerfil } = useAuthStore();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        loadPerfil(session.user.id);
-      }
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        loadPerfil(session.user.id);
-      } else {
-        setUser(null);
-        useAuthStore.getState().setPerfil(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    // TODO: Replace with actual auth session check
+    const stored = localStorage.getItem('auth_user');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      setUser(parsed);
+      loadPerfil(parsed.id);
+    }
+    setLoading(false);
   }, []);
 
   if (loading) {

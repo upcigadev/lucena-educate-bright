@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/mock-db';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -11,14 +11,7 @@ import { cpfMask, maskCPF, validateCPF } from '@/lib/cpf';
 import { Badge } from '@/components/ui/badge';
 import { criarUsuario } from '@/lib/criar-usuario';
 
-interface RespRow {
-  id: string;
-  usuario_id: string;
-  nome: string;
-  cpf: string;
-  telefone: string | null;
-  alunos: string[];
-}
+interface RespRow { id: string; usuario_id: string; nome: string; cpf: string; telefone: string | null; alunos: string[]; }
 
 export default function Responsaveis() {
   const [data, setData] = useState<RespRow[]>([]);
@@ -26,53 +19,29 @@ export default function Responsaveis() {
   const [editing, setEditing] = useState<RespRow | null>(null);
   const [form, setForm] = useState({ nome: '', cpf: '', telefone: '' });
 
-  const load = async () => {
-    const res = await window.electronAPI.getUsersByRole('responsavel');
-    if (res.success && res.data) {
-      setData(res.data.map((r: any) => ({
-        id: r.id,
-        usuario_id: r.id,
-        nome: r.name,
-        cpf: r.cpf,
-        telefone: r.telefone || null,
-        alunos: [],
-      })));
-    }
+  const load = () => {
+    const { data: resps } = db.responsaveis.list();
+    setData((resps as RespRow[]) || []);
   };
 
   useEffect(() => { load(); }, []);
 
-  const openNew = () => {
-    setEditing(null);
-    setForm({ nome: '', cpf: '', telefone: '' });
-    setOpen(true);
-  };
-
-  const openEdit = (row: RespRow) => {
-    setEditing(row);
-    setForm({ nome: row.nome, cpf: row.cpf, telefone: row.telefone || '' });
-    setOpen(true);
-  };
+  const openNew = () => { setEditing(null); setForm({ nome: '', cpf: '', telefone: '' }); setOpen(true); };
+  const openEdit = (row: RespRow) => { setEditing(row); setForm({ nome: row.nome, cpf: row.cpf, telefone: row.telefone || '' }); setOpen(true); };
 
   const save = async () => {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório.'); return; }
     if (editing) {
-      toast.success('Edição de Pessoas ainda não habilitada offline.');
+      db.usuarios.update(editing.usuario_id, { nome: form.nome });
+      db.responsaveis.update(editing.id, { telefone: form.telefone || null });
+      toast.success('Responsável atualizado.');
     } else {
       const cpfClean = form.cpf.replace(/\D/g, '');
       if (!validateCPF(cpfClean)) { toast.error('CPF inválido.'); return; }
       try {
-        const result = await criarUsuario({
-          nome: form.nome,
-          cpf: cpfClean,
-          papel: 'RESPONSAVEL',
-          telefone: form.telefone || undefined,
-        });
+        const result = await criarUsuario({ nome: form.nome, cpf: cpfClean, papel: 'RESPONSAVEL', telefone: form.telefone || undefined });
         toast.success(`Responsável cadastrado. Login: ${result.email_login} | Senha: ${result.senha_temporaria}`);
-      } catch (err: any) {
-        toast.error(err.message);
-        return;
-      }
+      } catch (err: any) { toast.error(err.message); return; }
     }
     setOpen(false);
     load();
@@ -84,10 +53,7 @@ export default function Responsaveis() {
     { key: 'telefone', header: 'Telefone' },
     { key: 'alunos', header: 'Alunos', render: r => (
       <div className="flex flex-wrap gap-1">
-        {r.alunos.length > 0
-          ? r.alunos.map((a, i) => <Badge key={i} variant="secondary" className="text-xs">{a}</Badge>)
-          : <span className="text-xs text-muted-foreground">Nenhum</span>
-        }
+        {r.alunos.length > 0 ? r.alunos.map((a, i) => <Badge key={i} variant="secondary" className="text-xs">{a}</Badge>) : <span className="text-xs text-muted-foreground">Nenhum</span>}
       </div>
     )},
   ];
@@ -96,25 +62,13 @@ export default function Responsaveis() {
     <div>
       <PageHeader title="Responsáveis" actionLabel="Novo Responsável" onAction={openNew} />
       <DataTable data={data} columns={columns} onRowClick={openEdit} searchPlaceholder="Buscar responsável…" />
-
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>{editing ? 'Editar Responsável' : 'Novo Responsável'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label>Nome *</Label>
-              <Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} />
-            </div>
-            {!editing && (
-              <div className="space-y-2">
-                <Label>CPF *</Label>
-                <Input value={form.cpf} onChange={e => setForm({ ...form, cpf: cpfMask(e.target.value) })} placeholder="000.000.000-00" />
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Telefone</Label>
-              <Input value={form.telefone} onChange={e => setForm({ ...form, telefone: e.target.value })} />
-            </div>
+            <div className="space-y-2"><Label>Nome *</Label><Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} /></div>
+            {!editing && (<div className="space-y-2"><Label>CPF *</Label><Input value={form.cpf} onChange={e => setForm({ ...form, cpf: cpfMask(e.target.value) })} placeholder="000.000.000-00" /></div>)}
+            <div className="space-y-2"><Label>Telefone</Label><Input value={form.telefone} onChange={e => setForm({ ...form, telefone: e.target.value })} /></div>
             <Button onClick={save} className="w-full" disabled={!form.nome.trim()}>Salvar</Button>
           </div>
         </SheetContent>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db, mockEscolas } from '@/lib/mock-db';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -12,13 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { criarUsuario } from '@/lib/criar-usuario';
 
-interface ProfRow {
-  id: string;
-  usuario_id: string;
-  nome: string;
-  cpf: string;
-  escolas: string[];
-}
+interface ProfRow { id: string; usuario_id: string; nome: string; cpf: string; escolas: string[]; }
 
 export default function Professores() {
   const [data, setData] = useState<ProfRow[]>([]);
@@ -28,39 +22,20 @@ export default function Professores() {
   const [form, setForm] = useState({ nome: '', cpf: '' });
   const [selectedEscolas, setSelectedEscolas] = useState<string[]>([]);
 
-  const load = async () => {
-    const res = await window.electronAPI.getUsersByRole('professor');
-    if (res.success && res.data) {
-      setData(res.data.map((p: any) => ({
-        id: p.id,
-        usuario_id: p.id,
-        nome: p.name,
-        cpf: p.cpf,
-        escolas: [],
-      })));
-    }
-    
-    // As escolas ainda mockadas ou via getSchools se as páginas dependem disso
-    const escRes = await window.electronAPI.getSchools();
-    if (escRes.success && escRes.data) {
-      setEscolas(escRes.data);
-    }
+  const load = () => {
+    const { data: profs } = db.professores.list();
+    setData((profs as ProfRow[]) || []);
+    setEscolas(mockEscolas.map(e => ({ id: e.id, nome: e.nome })));
   };
 
   useEffect(() => { load(); }, []);
 
-  const openNew = () => {
-    setEditing(null);
-    setForm({ nome: '', cpf: '' });
-    setSelectedEscolas([]);
-    setOpen(true);
-  };
-
+  const openNew = () => { setEditing(null); setForm({ nome: '', cpf: '' }); setSelectedEscolas([]); setOpen(true); };
   const openEdit = (row: ProfRow) => {
     setEditing(row);
     setForm({ nome: row.nome, cpf: row.cpf });
-    supabase.from('professor_escolas').select('escola_id').eq('professor_id', row.id)
-      .then(({ data }) => setSelectedEscolas(data?.map((d: any) => d.escola_id) || []));
+    const { data: pes } = db.professorEscolas.listByProfessor(row.id);
+    setSelectedEscolas((pes || []).map((d: any) => d.escola_id));
     setOpen(true);
   };
 
@@ -69,30 +44,19 @@ export default function Professores() {
   };
 
   const save = async () => {
-    if (!form.nome.trim() || selectedEscolas.length === 0) {
-      toast.error('Preencha nome e selecione ao menos uma escola.');
-      return;
-    }
+    if (!form.nome.trim() || selectedEscolas.length === 0) { toast.error('Preencha nome e selecione ao menos uma escola.'); return; }
     if (!editing) {
       const cpfClean = form.cpf.replace(/\D/g, '');
       if (!validateCPF(cpfClean)) { toast.error('CPF inválido.'); return; }
-
       try {
-        const result = await criarUsuario({
-          nome: form.nome,
-          cpf: cpfClean,
-          papel: 'PROFESSOR',
-          escolas_ids: selectedEscolas,
-        });
+        const result = await criarUsuario({ nome: form.nome, cpf: cpfClean, papel: 'PROFESSOR', escolas_ids: selectedEscolas });
         toast.success(`Professor cadastrado. Login: ${result.email_login} | Senha: ${result.senha_temporaria}`);
-      } catch (err: any) {
-        toast.error(err.message);
-        return;
-      }
+      } catch (err: any) { toast.error(err.message); return; }
     } else {
-      // Em SQLite offline básico as atualizações de user usariam ipcMain update, 
-      // mas vamos focar em Cadastro
-      toast.success('Edição de Pessoas ainda não habilitada offline.');
+      db.usuarios.update(editing.usuario_id, { nome: form.nome });
+      db.professorEscolas.deleteByProfessor(editing.id);
+      selectedEscolas.forEach(eid => db.professorEscolas.insert({ professor_id: editing.id, escola_id: eid }));
+      toast.success('Professor atualizado.');
     }
     setOpen(false);
     load();
@@ -102,9 +66,7 @@ export default function Professores() {
     { key: 'nome', header: 'Nome' },
     { key: 'cpf', header: 'CPF', render: r => maskCPF(r.cpf) },
     { key: 'escolas', header: 'Escolas', render: r => (
-      <div className="flex flex-wrap gap-1">
-        {r.escolas.map((e, i) => <Badge key={i} variant="secondary" className="text-xs">{e}</Badge>)}
-      </div>
+      <div className="flex flex-wrap gap-1">{r.escolas.map((e, i) => <Badge key={i} variant="secondary" className="text-xs">{e}</Badge>)}</div>
     )},
   ];
 
@@ -112,21 +74,12 @@ export default function Professores() {
     <div>
       <PageHeader title="Professores" actionLabel="Novo Professor" onAction={openNew} />
       <DataTable data={data} columns={columns} onRowClick={openEdit} searchPlaceholder="Buscar professor…" />
-
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>{editing ? 'Editar Professor' : 'Novo Professor'}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label>Nome *</Label>
-              <Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} />
-            </div>
-            {!editing && (
-              <div className="space-y-2">
-                <Label>CPF *</Label>
-                <Input value={form.cpf} onChange={e => setForm({ ...form, cpf: cpfMask(e.target.value) })} placeholder="000.000.000-00" />
-              </div>
-            )}
+            <div className="space-y-2"><Label>Nome *</Label><Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} /></div>
+            {!editing && (<div className="space-y-2"><Label>CPF *</Label><Input value={form.cpf} onChange={e => setForm({ ...form, cpf: cpfMask(e.target.value) })} placeholder="000.000.000-00" /></div>)}
             <div className="space-y-2">
               <Label>Escolas *</Label>
               <div className="space-y-2 rounded-lg border p-3 max-h-48 overflow-y-auto">

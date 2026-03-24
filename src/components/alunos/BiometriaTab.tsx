@@ -1,63 +1,10 @@
-import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { ScanFace, Send, Wifi, Monitor, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { ScanFace, Send, Wifi, Monitor } from 'lucide-react';
 
-interface BiometriaTabProps {
-  aluno?: { nome: string; matricula: string; class_id?: string };
-  disabled?: boolean;
-}
-
-export function BiometriaTab({ aluno, disabled }: BiometriaTabProps) {
-  const [loading, setLoading] = useState(false);
-  const ipDispositivo = '10.0.0.201'; // Fixo para demo
-
-  const handleEnroll = async () => {
-    if (!aluno || !aluno.nome || !aluno.matricula) {
-      toast.error('Preencha o Nome e Matrícula primeiro!');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // 1. Salvar no SQLite
-      const saveRes = await window.electronAPI.createStudent({
-        name: aluno.nome,
-        matricula: aluno.matricula,
-        class_id: aluno.class_id,
-      });
-
-      if (!saveRes.success || !saveRes.id) {
-        toast.error(`Falha ao gravar aluno no banco: ${saveRes.error}`);
-        setLoading(false);
-        return;
-      }
-
-      // 2. Comunicar com Aparelho
-      const enrollRes = await window.electronAPI.enrollUserDevice({
-        ip: ipDispositivo,
-        id: saveRes.id,
-        name: aluno.nome,
-        matricula: aluno.matricula,
-      });
-
-      if (!enrollRes.success) {
-        toast.error(`Falha de comunicação com o aparelho: ${enrollRes.error}`);
-        setLoading(false);
-        return;
-      }
-
-      toast.success('Câmara ativada no terminal! Posicione o aluno.');
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+export function BiometriaTab() {
   return (
     <div className="space-y-4 mt-3">
       <Card className="border-dashed border-2">
@@ -104,14 +51,9 @@ export function BiometriaTab({ aluno, disabled }: BiometriaTabProps) {
           </div>
 
           {/* Main action button */}
-          <Button 
-            size="lg" 
-            className="w-full gap-2 text-base font-semibold h-12"
-            disabled={disabled || loading}
-            onClick={handleEnroll}
-          >
-            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-            {loading ? 'Processando...' : 'Enviar Comando de Cadastro para o Aparelho'}
+          <Button size="lg" className="w-full gap-2 text-base font-semibold h-12">
+            <Send className="h-5 w-5" />
+            Enviar Comando de Cadastro para o Aparelho
           </Button>
 
           <p className="text-xs text-muted-foreground text-center">

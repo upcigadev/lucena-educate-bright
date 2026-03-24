@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { db } from '@/lib/mock-db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,7 +15,7 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { setUser } = useAuthStore();
+  const { loadPerfil, setUser } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,27 +28,25 @@ export default function Login() {
       return;
     }
 
-    try {
-      if (!window.electronAPI) {
-        toast.error('Erro fatal: API do Electron não encontrada.');
-        setLoading(false);
-        return;
-      }
-      const res = await window.electronAPI.login(cpfClean, password);
+    // TODO: Replace with actual SQLite auth
+    // For now, find user by CPF in mock data
+    const { mockUsuarios } = await import('@/lib/mock-db');
+    const usuario = mockUsuarios.find(u => u.cpf === cpfClean && u.ativo);
 
-      if (!res.success || !res.user) {
-        toast.error('Credenciais incorretas ou usuário não encontrado.');
-        setLoading(false);
-        return;
-      }
-
-      setUser(res.user);
-      navigate('/dashboard');
-    } catch (error) {
-      toast.error('Erro de comunicação com o banco local.');
-    } finally {
+    if (!usuario) {
+      toast.error('CPF não encontrado ou usuário inativo.');
       setLoading(false);
+      return;
     }
+
+    // TODO: Validate password against actual auth system
+    // For now accept any password
+    const appUser = { id: usuario.auth_id, email: usuario.email || undefined };
+    localStorage.setItem('auth_user', JSON.stringify(appUser));
+    setUser(appUser);
+    await loadPerfil(usuario.auth_id);
+    navigate('/dashboard');
+    setLoading(false);
   };
 
   return (

@@ -1,22 +1,31 @@
 import { create } from 'zustand';
+import { db } from '@/lib/mock-db';
 
-export type Papel = 'SECRETARIA' | 'DIRETOR' | 'PROFESSOR' | 'RESPONSAVEL' | 'secretaria' | string;
+export type Papel = 'SECRETARIA' | 'DIRETOR' | 'PROFESSOR' | 'RESPONSAVEL';
 
-export interface User {
+export interface UsuarioPerfil {
   id: string;
+  email: string | null;
+  nome: string;
   cpf: string;
-  name: string;
-  role: Papel;
-  nome?: string; // backward compat with components
+  papel: Papel;
+  ativo: boolean;
+  auth_id: string;
+}
+
+// Minimal User type to replace Supabase User
+export interface AppUser {
+  id: string;
+  email?: string;
 }
 
 interface AuthState {
-  user: User | null;
-  perfil: User | null;
+  user: AppUser | null;
+  perfil: UsuarioPerfil | null;
   escolaAtiva: string | null;
   loading: boolean;
-  setUser: (user: User | null) => void;
-  setPerfil: (perfil: User | null) => void;
+  setUser: (user: AppUser | null) => void;
+  setPerfil: (perfil: UsuarioPerfil | null) => void;
   setEscolaAtiva: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   logout: () => Promise<void>;
@@ -27,8 +36,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   perfil: null,
   escolaAtiva: localStorage.getItem('escola_ativa'),
-  loading: false,
-  setUser: (user) => set({ user, perfil: user }),
+  loading: true,
+  setUser: (user) => set({ user }),
   setPerfil: (perfil) => set({ perfil }),
   setEscolaAtiva: (id) => {
     if (id) localStorage.setItem('escola_ativa', id);
@@ -37,10 +46,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   setLoading: (loading) => set({ loading }),
   logout: async () => {
+    // TODO: Replace with actual auth signout
     localStorage.removeItem('escola_ativa');
+    localStorage.removeItem('auth_user');
     set({ user: null, perfil: null, escolaAtiva: null });
   },
   loadPerfil: async (authId: string) => {
-    // Offline version ignores this since login already sets perfil
+    // TODO: Replace with actual SQLite query
+    const { data } = db.usuarios.getByAuthId(authId);
+    if (data) {
+      set({ perfil: data as unknown as UsuarioPerfil });
+    }
   },
 }));
