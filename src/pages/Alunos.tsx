@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db, mockSeries, mockEscolas } from '@/lib/mock-db';
+import { db } from '@/lib/mock-db';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable } from '@/components/shared/DataTable';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -30,13 +30,21 @@ export default function Alunos() {
     resp_nome: '', resp_cpf: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe'
   });
 
-  const load = () => {
-    const { data } = db.alunos.list();
+  const load = async () => {
+    const { data } = await db.alunos.list();
     setAlunos((data as AlunoRow[]) || []);
-    const { data: t } = db.turmas.listAll();
+    const { data: t } = await db.turmas.listAll();
     setTurmas((t as Turma[]) || []);
-    setSeries(mockSeries as Serie[]);
-    setEscolas(mockEscolas.map(e => ({ id: e.id, nome: e.nome })));
+    const { data: e } = await db.escolas.list();
+    setEscolas(((e || []) as any[]).map(x => ({ id: x.id, nome: x.nome })));
+
+    // Load all series from all escolas
+    const allSeries: Serie[] = [];
+    for (const escola of (e || []) as any[]) {
+      const { data: s } = await db.series.listByEscola(escola.id);
+      if (s) allSeries.push(...(s as Serie[]));
+    }
+    setSeries(allSeries);
   };
 
   useEffect(() => { load(); }, []);
@@ -54,15 +62,15 @@ export default function Alunos() {
     setOpen(true);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!form.nome_completo.trim() || !form.matricula.trim() || !form.escola_id) {
       toast.error('Preencha nome, matrícula e escola.'); return;
     }
     if (editing) {
-      db.alunos.update(editing.id, { nome_completo: form.nome_completo, data_nascimento: form.data_nascimento || null, turma_id: form.turma_id || null, escola_id: form.escola_id });
+      await db.alunos.update(editing.id, { nome_completo: form.nome_completo, data_nascimento: form.data_nascimento || null, turma_id: form.turma_id || null, escola_id: form.escola_id });
       toast.success('Aluno atualizado.');
     } else {
-      db.alunos.insert({ nome_completo: form.nome_completo, matricula: form.matricula, data_nascimento: form.data_nascimento || null, escola_id: form.escola_id, turma_id: form.turma_id || null });
+      await db.alunos.insert({ nome_completo: form.nome_completo, matricula: form.matricula, data_nascimento: form.data_nascimento || null, escola_id: form.escola_id, turma_id: form.turma_id || null });
       toast.success('Aluno cadastrado.');
     }
     setOpen(false);

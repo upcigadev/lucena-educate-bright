@@ -27,9 +27,9 @@ export default function Escolas() {
   const [form, setForm] = useState({ nome: '', inep: '', endereco: '', telefone: '' });
   const navigate = useNavigate();
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    const { data } = db.escolas.list();
+    const { data } = await db.escolas.list();
     setEscolas((data as Escola[]) || []);
     setLoading(false);
   };
@@ -41,10 +41,9 @@ export default function Escolas() {
     setSheetOpen(true);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório.'); return; }
-    // TODO: Insert into SQLite
-    db.escolas.insert({ nome: form.nome, inep: form.inep || null, endereco: form.endereco || null, telefone: form.telefone || null });
+    await db.escolas.insert({ nome: form.nome, inep: form.inep || null, endereco: form.endereco || null, telefone: form.telefone || null });
     toast.success('Escola criada.');
     setSheetOpen(false);
     load();
@@ -63,7 +62,6 @@ export default function Escolas() {
   return (
     <div>
       <PageHeader title="Escolas" description="Unidades escolares do município" actionLabel="Nova Escola" onAction={openNew} />
-
       <div className="relative mb-6">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input placeholder="Buscar escola por nome ou INEP…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9 max-w-md" />

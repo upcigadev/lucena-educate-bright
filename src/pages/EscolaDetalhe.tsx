@@ -31,6 +31,8 @@ export default function EscolaDetalhe() {
   const [series, setSeries] = useState<Serie[]>([]);
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalAlunos, setTotalAlunos] = useState(0);
+  const [diretorNome, setDiretorNome] = useState('—');
 
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [editForm, setEditForm] = useState({ nome: '', inep: '', endereco: '', telefone: '' });
@@ -40,15 +42,19 @@ export default function EscolaDetalhe() {
   const [turmaSerieId, setTurmaSerieId] = useState('');
   const [turmaForm, setTurmaForm] = useState({ letra: '', sala: '' });
 
-  const load = () => {
+  const load = async () => {
     if (!escolaId) return;
     setLoading(true);
-    const { data: escolaData } = db.escolas.getById(escolaId);
-    const { data: seriesData } = db.series.listByEscola(escolaId);
-    const { data: turmasData } = db.turmas.listByEscola(escolaId);
+    const { data: escolaData } = await db.escolas.getById(escolaId);
+    const { data: seriesData } = await db.series.listByEscola(escolaId);
+    const { data: turmasData } = await db.turmas.listByEscola(escolaId);
+    const { data: alunoCount } = await db.alunos.countByEscola(escolaId);
+    const { data: diretor } = await db.diretores.getByEscola(escolaId);
     setEscola(escolaData as Escola | null);
     setSeries((seriesData as Serie[]) || []);
     setTurmas((turmasData as Turma[]) || []);
+    setTotalAlunos(alunoCount as number || 0);
+    setDiretorNome((diretor as any)?.nome || '—');
     setLoading(false);
   };
 
@@ -60,28 +66,28 @@ export default function EscolaDetalhe() {
     setEditSheetOpen(true);
   };
 
-  const saveEscola = () => {
+  const saveEscola = async () => {
     if (!escolaId || !editForm.nome.trim()) return;
-    db.escolas.update(escolaId, { nome: editForm.nome, inep: editForm.inep || null, endereco: editForm.endereco || null, telefone: editForm.telefone || null });
+    await db.escolas.update(escolaId, { nome: editForm.nome, inep: editForm.inep || null, endereco: editForm.endereco || null, telefone: editForm.telefone || null });
     toast.success('Escola atualizada.');
     setEditSheetOpen(false);
     load();
   };
 
-  const saveSerie = () => {
+  const saveSerie = async () => {
     if (!escolaId || !serieForm.nome) return;
-    db.series.insert({ escola_id: escolaId, nome: serieForm.nome, horario_inicio: serieForm.horario_inicio || null, tolerancia_min: serieForm.tolerancia_min ? Number(serieForm.tolerancia_min) : null });
+    await db.series.insert({ escola_id: escolaId, nome: serieForm.nome, horario_inicio: serieForm.horario_inicio || null, tolerancia_min: serieForm.tolerancia_min ? Number(serieForm.tolerancia_min) : null });
     toast.success('Série criada.');
     setSerieSheetOpen(false);
     setSerieForm({ nome: '', horario_inicio: '', tolerancia_min: '' });
     load();
   };
 
-  const saveTurma = () => {
+  const saveTurma = async () => {
     if (!escolaId || !turmaSerieId || !turmaForm.letra) return;
     const serie = series.find(s => s.id === turmaSerieId);
     const nomeCompleto = serie ? `${serie.nome} ${turmaForm.letra}` : turmaForm.letra;
-    db.turmas.insert({ escola_id: escolaId, serie_id: turmaSerieId, nome: nomeCompleto, sala: turmaForm.sala || null });
+    await db.turmas.insert({ escola_id: escolaId, serie_id: turmaSerieId, nome: nomeCompleto, sala: turmaForm.sala || null });
     toast.success('Turma criada.');
     setTurmaSheetOpen(false);
     setTurmaForm({ letra: '', sala: '' });
@@ -90,9 +96,7 @@ export default function EscolaDetalhe() {
 
   const getTurmasBySerie = (serieId: string) => turmas.filter(t => t.serie_id === serieId);
 
-  const totalAlunos = 347;
   const freqGeral = 91.2;
-  const diretorNome = 'Maria Helena Costa';
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;

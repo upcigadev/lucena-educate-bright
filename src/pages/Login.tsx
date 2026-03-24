@@ -28,10 +28,7 @@ export default function Login() {
       return;
     }
 
-    // TODO: Replace with actual SQLite auth
-    // For now, find user by CPF in mock data
-    const { mockUsuarios } = await import('@/lib/mock-db');
-    const usuario = mockUsuarios.find(u => u.cpf === cpfClean && u.ativo);
+    const { data: usuario } = await db.usuarios.getByCpf(cpfClean);
 
     if (!usuario) {
       toast.error('CPF não encontrado ou usuário inativo.');
@@ -40,7 +37,6 @@ export default function Login() {
     }
 
     // TODO: Validate password against actual auth system
-    // For now accept any password
     const appUser = { id: usuario.auth_id, email: usuario.email || undefined };
     localStorage.setItem('auth_user', JSON.stringify(appUser));
     setUser(appUser);
@@ -65,34 +61,13 @@ export default function Login() {
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="cpf">CPF</Label>
-            <Input
-              id="cpf"
-              type="text"
-              inputMode="numeric"
-              value={cpf}
-              onChange={(e) => setCpf(cpfMask(e.target.value))}
-              placeholder="000.000.000-00"
-              required
-              autoComplete="username"
-            />
+            <Input id="cpf" type="text" inputMode="numeric" value={cpf} onChange={(e) => setCpf(cpfMask(e.target.value))} placeholder="000.000.000-00" required autoComplete="username" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Senha</Label>
             <div className="relative">
-              <Input
-                id="password"
-                type={showPw ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                autoComplete="current-password"
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                onClick={() => setShowPw(!showPw)}
-              >
+              <Input id="password" type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required autoComplete="current-password" />
+              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowPw(!showPw)}>
                 {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
