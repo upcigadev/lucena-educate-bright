@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db } from '@/lib/mock-db';
+import { db, mockSeries, mockEscolas } from '@/lib/mock-db';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable } from '@/components/shared/DataTable';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -35,10 +35,8 @@ export default function Alunos() {
     setAlunos((data as AlunoRow[]) || []);
     const { data: t } = db.turmas.listAll();
     setTurmas((t as Turma[]) || []);
-    // TODO: get series from mock-db
-    const { mockSeries, mockEscolas } = require('@/lib/mock-db');
     setSeries(mockSeries as Serie[]);
-    setEscolas(mockEscolas.map((e: any) => ({ id: e.id, nome: e.nome })));
+    setEscolas(mockEscolas.map(e => ({ id: e.id, nome: e.nome })));
   };
 
   useEffect(() => { load(); }, []);
@@ -60,7 +58,6 @@ export default function Alunos() {
     if (!form.nome_completo.trim() || !form.matricula.trim() || !form.escola_id) {
       toast.error('Preencha nome, matrícula e escola.'); return;
     }
-    // TODO: Replace with SQLite insert/update
     if (editing) {
       db.alunos.update(editing.id, { nome_completo: form.nome_completo, data_nascimento: form.data_nascimento || null, turma_id: form.turma_id || null, escola_id: form.escola_id });
       toast.success('Aluno atualizado.');
