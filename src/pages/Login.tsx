@@ -30,8 +30,6 @@ export default function Login() {
 
     // TODO: Replace with actual SQLite auth
     // For now, find user by CPF in mock data
-    const { data: usuarios } = db.usuarios.getByAuthId(''); // won't match
-    // Lookup by CPF from mock
     const { mockUsuarios } = await import('@/lib/mock-db');
     const usuario = mockUsuarios.find(u => u.cpf === cpfClean && u.ativo);
 
