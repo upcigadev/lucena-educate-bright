@@ -14,22 +14,24 @@ export function EscolaSelectorHeader() {
   useEffect(() => {
     if (!needsSelector || !perfil) return;
 
-    // TODO: Replace with SQLite queries
-    if (perfil.papel === 'DIRETOR') {
-      const { data } = db.diretores.listByUsuario(perfil.id);
-      if (data) {
-        const mapped = data.map((d: any) => ({ id: d.escolas?.id || d.escola_id, nome: d.escolas?.nome || '' }));
-        setEscolas(mapped);
-        if (!escolaAtiva && mapped.length > 0) setEscolaAtiva(mapped[0].id);
+    const load = async () => {
+      if (perfil.papel === 'DIRETOR') {
+        const { data } = await db.diretores.listByUsuario(perfil.id);
+        if (data) {
+          const mapped = data.map((d: any) => ({ id: d.escolas?.id || d.escola_id, nome: d.escolas?.nome || '' }));
+          setEscolas(mapped);
+          if (!escolaAtiva && mapped.length > 0) setEscolaAtiva(mapped[0].id);
+        }
+      } else if (perfil.papel === 'PROFESSOR') {
+        const { data } = await db.professorEscolas.listByProfessor(perfil.id);
+        if (data) {
+          const mapped = data.map((d: any) => ({ id: d.escolas?.id || d.escola_id, nome: d.escolas?.nome || '' }));
+          setEscolas(mapped);
+          if (!escolaAtiva && mapped.length > 0) setEscolaAtiva(mapped[0].id);
+        }
       }
-    } else if (perfil.papel === 'PROFESSOR') {
-      const { data } = db.professorEscolas.listByProfessor(perfil.id);
-      if (data) {
-        const mapped = data.map((d: any) => ({ id: d.escolas?.id || d.escola_id, nome: d.escolas?.nome || '' }));
-        setEscolas(mapped);
-        if (!escolaAtiva && mapped.length > 0) setEscolaAtiva(mapped[0].id);
-      }
-    }
+    };
+    load();
   }, [perfil, needsSelector]);
 
   if (!needsSelector || escolas.length <= 1) return null;

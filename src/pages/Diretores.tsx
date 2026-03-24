@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db, mockEscolas } from '@/lib/mock-db';
+import { db } from '@/lib/mock-db';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -27,10 +27,11 @@ export default function Diretores() {
   const [editing, setEditing] = useState<DiretorRow | null>(null);
   const [form, setForm] = useState({ nome: '', cpf: '', escola_id: '' });
 
-  const load = () => {
-    const { data: dirs } = db.diretores.list();
+  const load = async () => {
+    const { data: dirs } = await db.diretores.list();
     setData((dirs as DiretorRow[]) || []);
-    setEscolas(mockEscolas.map(e => ({ id: e.id, nome: e.nome })));
+    const { data: esc } = await db.escolas.list();
+    setEscolas(((esc || []) as any[]).map(e => ({ id: e.id, nome: e.nome })));
   };
 
   useEffect(() => { load(); }, []);
@@ -44,8 +45,8 @@ export default function Diretores() {
     if (!validateCPF(cpfClean)) { toast.error('CPF inválido.'); return; }
 
     if (editing) {
-      db.usuarios.update(editing.usuario_id, { nome: form.nome });
-      db.diretores.update(editing.id, { escola_id: form.escola_id });
+      await db.usuarios.update(editing.usuario_id, { nome: form.nome });
+      await db.diretores.update(editing.id, { escola_id: form.escola_id });
       toast.success('Diretor atualizado.');
     } else {
       try {

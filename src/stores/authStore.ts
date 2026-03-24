@@ -13,7 +13,6 @@ export interface UsuarioPerfil {
   auth_id: string;
 }
 
-// Minimal User type to replace Supabase User
 export interface AppUser {
   id: string;
   email?: string;
@@ -46,14 +45,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   setLoading: (loading) => set({ loading }),
   logout: async () => {
-    // TODO: Replace with actual auth signout
     localStorage.removeItem('escola_ativa');
     localStorage.removeItem('auth_user');
     set({ user: null, perfil: null, escolaAtiva: null });
   },
   loadPerfil: async (authId: string) => {
-    // TODO: Replace with actual SQLite query
-    const { data } = db.usuarios.getByAuthId(authId);
+    const { data } = await db.usuarios.getByAuthId(authId);
     if (data) {
       set({ perfil: data as unknown as UsuarioPerfil });
     }

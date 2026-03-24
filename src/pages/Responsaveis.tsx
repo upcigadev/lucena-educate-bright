@@ -19,8 +19,8 @@ export default function Responsaveis() {
   const [editing, setEditing] = useState<RespRow | null>(null);
   const [form, setForm] = useState({ nome: '', cpf: '', telefone: '' });
 
-  const load = () => {
-    const { data: resps } = db.responsaveis.list();
+  const load = async () => {
+    const { data: resps } = await db.responsaveis.list();
     setData((resps as RespRow[]) || []);
   };
 
@@ -32,8 +32,8 @@ export default function Responsaveis() {
   const save = async () => {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório.'); return; }
     if (editing) {
-      db.usuarios.update(editing.usuario_id, { nome: form.nome });
-      db.responsaveis.update(editing.id, { telefone: form.telefone || null });
+      await db.usuarios.update(editing.usuario_id, { nome: form.nome });
+      await db.responsaveis.update(editing.id, { telefone: form.telefone || null });
       toast.success('Responsável atualizado.');
     } else {
       const cpfClean = form.cpf.replace(/\D/g, '');

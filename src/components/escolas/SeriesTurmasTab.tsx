@@ -31,12 +31,12 @@ export function SeriesTurmasTab({ escolaId }: { escolaId: string }) {
   const [serieForm, setSerieForm] = useState({ nome: '', horario_inicio: '07:00', tolerancia_min: '15', limite_max: '07:30' });
   const [turmaForm, setTurmaForm] = useState({ letra: '', sala: '', horario_inicio: '', tolerancia_min: '', limite_max: '' });
 
-  const load = () => {
-    const { data: s } = db.series.listByEscola(escolaId);
+  const load = async () => {
+    const { data: s } = await db.series.listByEscola(escolaId);
     const seriesData = (s as Serie[]) || [];
     setSeries(seriesData);
 
-    const { data: t } = db.turmas.listByEscola(escolaId);
+    const { data: t } = await db.turmas.listByEscola(escolaId);
     const turmasData = (t as Turma[]) || [];
     const grouped: Record<string, Turma[]> = {};
     turmasData.forEach(turma => {
@@ -50,16 +50,16 @@ export function SeriesTurmasTab({ escolaId }: { escolaId: string }) {
 
   const availableSeriesOptions = SERIES_OPTIONS.filter(opt => !series.some(s => s.nome === opt));
 
-  const saveSerie = () => {
+  const saveSerie = async () => {
     if (!serieForm.nome) return;
-    db.series.insert({ nome: serieForm.nome, escola_id: escolaId, horario_inicio: serieForm.horario_inicio || '07:00', tolerancia_min: parseInt(serieForm.tolerancia_min) || 15, limite_max: serieForm.limite_max || '07:30' });
+    await db.series.insert({ nome: serieForm.nome, escola_id: escolaId, horario_inicio: serieForm.horario_inicio || '07:00', tolerancia_min: parseInt(serieForm.tolerancia_min) || 15, limite_max: serieForm.limite_max || '07:30' });
     toast.success('Série criada.');
     setShowSerieForm(false);
     setSerieForm({ nome: '', horario_inicio: '07:00', tolerancia_min: '15', limite_max: '07:30' });
     load();
   };
 
-  const saveTurma = (serieId: string) => {
+  const saveTurma = async (serieId: string) => {
     if (!turmaForm.letra) return;
     const serie = series.find(s => s.id === serieId);
     const turmaName = serie ? `${serie.nome} ${turmaForm.letra}` : turmaForm.letra;
@@ -67,7 +67,7 @@ export function SeriesTurmasTab({ escolaId }: { escolaId: string }) {
     if (existing.some(t => t.nome === turmaName)) { toast.error(`Turma "${turmaName}" já existe.`); return; }
     const salaNum = turmaForm.sala ? parseInt(turmaForm.sala) : null;
     if (turmaForm.sala && (isNaN(salaNum!) || salaNum! <= 0)) { toast.error('Número da sala deve ser positivo.'); return; }
-    db.turmas.insert({ nome: turmaName, serie_id: serieId, escola_id: escolaId, sala: salaNum ? String(salaNum) : null, horario_inicio: turmaForm.horario_inicio || null, tolerancia_min: turmaForm.tolerancia_min ? parseInt(turmaForm.tolerancia_min) : null, limite_max: turmaForm.limite_max || null });
+    await db.turmas.insert({ nome: turmaName, serie_id: serieId, escola_id: escolaId, sala: salaNum ? String(salaNum) : null, horario_inicio: turmaForm.horario_inicio || null, tolerancia_min: turmaForm.tolerancia_min ? parseInt(turmaForm.tolerancia_min) : null, limite_max: turmaForm.limite_max || null });
     toast.success('Turma criada.');
     setShowTurmaForm(null);
     setTurmaForm({ letra: '', sala: '', horario_inicio: '', tolerancia_min: '', limite_max: '' });

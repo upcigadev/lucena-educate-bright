@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db, mockEscolas } from '@/lib/mock-db';
+import { db } from '@/lib/mock-db';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, type Column } from '@/components/shared/DataTable';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -22,19 +22,20 @@ export default function Professores() {
   const [form, setForm] = useState({ nome: '', cpf: '' });
   const [selectedEscolas, setSelectedEscolas] = useState<string[]>([]);
 
-  const load = () => {
-    const { data: profs } = db.professores.list();
+  const load = async () => {
+    const { data: profs } = await db.professores.list();
     setData((profs as ProfRow[]) || []);
-    setEscolas(mockEscolas.map(e => ({ id: e.id, nome: e.nome })));
+    const { data: esc } = await db.escolas.list();
+    setEscolas(((esc || []) as any[]).map(e => ({ id: e.id, nome: e.nome })));
   };
 
   useEffect(() => { load(); }, []);
 
   const openNew = () => { setEditing(null); setForm({ nome: '', cpf: '' }); setSelectedEscolas([]); setOpen(true); };
-  const openEdit = (row: ProfRow) => {
+  const openEdit = async (row: ProfRow) => {
     setEditing(row);
     setForm({ nome: row.nome, cpf: row.cpf });
-    const { data: pes } = db.professorEscolas.listByProfessor(row.id);
+    const { data: pes } = await db.professorEscolas.listByProfessor(row.id);
     setSelectedEscolas((pes || []).map((d: any) => d.escola_id));
     setOpen(true);
   };
@@ -53,9 +54,11 @@ export default function Professores() {
         toast.success(`Professor cadastrado. Login: ${result.email_login} | Senha: ${result.senha_temporaria}`);
       } catch (err: any) { toast.error(err.message); return; }
     } else {
-      db.usuarios.update(editing.usuario_id, { nome: form.nome });
-      db.professorEscolas.deleteByProfessor(editing.id);
-      selectedEscolas.forEach(eid => db.professorEscolas.insert({ professor_id: editing.id, escola_id: eid }));
+      await db.usuarios.update(editing.usuario_id, { nome: form.nome });
+      await db.professorEscolas.deleteByProfessor(editing.id);
+      for (const eid of selectedEscolas) {
+        await db.professorEscolas.insert({ professor_id: editing.id, escola_id: eid });
+      }
       toast.success('Professor atualizado.');
     }
     setOpen(false);
