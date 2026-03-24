@@ -277,7 +277,7 @@ INSERT OR IGNORE INTO frequencias (id, aluno_id, turma_id, data, hora_entrada, s
 
 async function initDatabase(): Promise<SqlJsDatabase> {
   const SQL = await initSqlJs({
-    locateFile: (file: string) => `https://sql.js.org/dist/${file}`,
+    locateFile: (file: string) => `/${file}`,
   });
 
   const savedData = await loadFromIDB();
