@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -19,6 +21,9 @@ export function BiometriaDemo() {
   const [connected, setConnected] = useState(false);
   const [logs, setLogs] = useState<AccessLogEvent[]>([]);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [ipAparelho, setIpAparelho] = useState('192.168.0.10');
+  const [userIdDemo, setUserIdDemo] = useState('1234');
+  const [pendingPhoto, setPendingPhoto] = useState<string | null>(null);
 
   useEffect(() => {
     // Conectar ao websocket da ponte local
@@ -37,10 +42,35 @@ export function BiometriaDemo() {
       toast.error('Desconectado da ponte biométrica!');
     });
 
-    newSocket.on('device:accessLog', (data: AccessLogEvent) => {
-      // Receber o evento e adicionar ao feed de logs (no topo)
-      setLogs((prevLogs) => [data, ...prevLogs].slice(0, 20)); // manter últimos 20
-      toast('Novo registro de acesso visualizado!');
+    newSocket.on('device:accessLog', (payload: any) => {
+      if (payload.type === 'photo') {
+        // Guarda a foto temporariamente até chegar o log de liberação
+        const base64 = typeof payload.data === 'string' 
+          ? payload.data 
+          : btoa(new Uint8Array(payload.data.data).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+        setPendingPhoto(base64);
+        return;
+      }
+
+      if (payload.type === 'log') {
+        const log = payload.data;
+        const isAuthorized = String(log.event) === "7"; // 7 = Acesso Liberado no iDFace
+        
+        // Usamos setPendingPhoto(currentPhoto => ...) para ler o estado mais recente de pendingPhoto e depois limpá-lo sem causar warnings de dependência no useEffect
+        setPendingPhoto((currentPhoto) => {
+          setLogs((prevLogs) => [{
+            userId: log.user_id,
+            status: isAuthorized ? 'autorizado' : 'bloqueado',
+            timestamp: new Date(parseInt(log.time) * 1000).toISOString(),
+            photoBase64: currentPhoto || undefined // Anexa a foto que chegou na requisição anterior
+          }, ...prevLogs].slice(0, 20));
+          return null; // Limpa para o próximo acesso
+        });
+        
+        toast(isAuthorized ? 'Acesso Liberado!' : 'Acesso Negado!', { 
+          icon: isAuthorized ? '✅' : '❌' 
+        });
+      }
     });
 
     setSocket(newSocket);
@@ -58,15 +88,13 @@ export function BiometriaDemo() {
       setLoadingAction('connect');
       const response = await fetch('http://localhost:3000/api/connect', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: ipAparelho })
       });
       if (!response.ok) throw new Error('Falha ao conectar no aparelho');
       toast.success('Comando de conexão enviado com sucesso!');
     } catch (error) {
-      console.error(error);
-      toast.error('Erro ao conectar no aparelho: verifique se a ponte está rodando.');
+      toast.error('Erro ao conectar: verifique se a ponte está rodando e o IP está correto.');
     } finally {
       setLoadingAction(null);
     }
@@ -77,15 +105,13 @@ export function BiometriaDemo() {
       setLoadingAction('capture');
       const response = await fetch('http://localhost:3000/api/capture', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: ipAparelho, internalUserId: userIdDemo })
       });
       if (!response.ok) throw new Error('Falha ao iniciar captura facial');
-      toast.success('Comando de captura facial enviado!');
+      toast.success('Câmera ativada! Posicione-se em frente ao aparelho.');
     } catch (error) {
-      console.error(error);
-      toast.error('Erro ao iniciar captura: verifique se a ponte está rodando.');
+      toast.error('Erro ao iniciar captura.');
     } finally {
       setLoadingAction(null);
     }
@@ -93,7 +119,7 @@ export function BiometriaDemo() {
 
   return (
     <Card className="w-full max-w-4xl mx-auto border-2">
-      <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20 pb-4">
+      <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b bg-muted/20 pb-4">
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg ${connected ? 'bg-emerald-100' : 'bg-rose-100'}`}>
             <Wifi className={`h-5 w-5 ${connected ? 'text-emerald-600' : 'text-rose-600'}`} />
@@ -105,24 +131,48 @@ export function BiometriaDemo() {
             </p>
           </div>
         </div>
-        <div className="flex bg-background border p-1 rounded-xl shadow-sm gap-2">
-          <Button 
-            variant="outline" 
-            onClick={handleConnectDevice}
-            disabled={loadingAction === 'connect'}
-            className="flex items-center gap-2 border-primary/20 hover:bg-primary/5"
-          >
-            <Wifi className="h-4 w-4" />
-            Conectar ao Aparelho
-          </Button>
-          <Button 
-            onClick={handleStartCapture}
-            disabled={loadingAction === 'capture'}
-            className="flex items-center gap-2"
-          >
-            <Camera className="h-4 w-4" />
-            Iniciar Captura Facial
-          </Button>
+        <div className="flex flex-col sm:flex-row items-end gap-3 bg-background border p-2 rounded-xl shadow-sm">
+          <div className="flex gap-2 w-full sm:w-auto">
+            <div className="space-y-1.5 flex-1 sm:flex-initial">
+              <Label htmlFor="ipAparelho" className="text-xs ml-1 font-medium text-muted-foreground">IP do Aparelho</Label>
+              <Input 
+                id="ipAparelho"
+                value={ipAparelho}
+                onChange={(e) => setIpAparelho(e.target.value)}
+                placeholder="Ex: 192.168.0.10"
+                className="h-9 w-full sm:w-[130px]"
+              />
+            </div>
+            <div className="space-y-1.5 flex-1 sm:flex-initial">
+              <Label htmlFor="userIdDemo" className="text-xs ml-1 font-medium text-muted-foreground">User ID</Label>
+              <Input 
+                id="userIdDemo"
+                value={userIdDemo}
+                onChange={(e) => setUserIdDemo(e.target.value)}
+                placeholder="Ex: 1234"
+                className="h-9 w-full sm:w-[90px]"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button 
+              variant="outline" 
+              onClick={handleConnectDevice}
+              disabled={loadingAction === 'connect'}
+              className="flex-1 sm:flex-auto items-center gap-2 border-primary/20 hover:bg-primary/5 h-9"
+            >
+              <Wifi className="h-4 w-4" />
+              Conectar
+            </Button>
+            <Button 
+              onClick={handleStartCapture}
+              disabled={loadingAction === 'capture'}
+              className="flex-1 sm:flex-auto items-center gap-2 h-9"
+            >
+              <Camera className="h-4 w-4" />
+              Capturar Face
+            </Button>
+          </div>
         </div>
       </CardHeader>
       
