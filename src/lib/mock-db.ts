@@ -109,24 +109,48 @@ export const db = {
       const rows = await query<{ c: number }>('SELECT COUNT(*) as c FROM alunos WHERE escola_id = ? AND ativo = 1', [escolaId]);
       return ok(rows[0]?.c || 0);
     },
-    insert: async (data: { nome_completo: string; matricula: string; data_nascimento?: string | null; escola_id: string; turma_id?: string | null }) => {
+    insert: async (data: { nome_completo: string; matricula: string; data_nascimento?: string | null; escola_id: string; turma_id?: string | null; horario_inicio?: string | null; horario_fim?: string | null; limite_max?: string | null; idface_user_id?: string | null }) => {
       const id = generateId();
-      await run('INSERT INTO alunos (id, nome_completo, matricula, data_nascimento, escola_id, turma_id) VALUES (?, ?, ?, ?, ?, ?)',
-        [id, data.nome_completo, data.matricula, data.data_nascimento || null, data.escola_id, data.turma_id || null]);
+      await run(
+        'INSERT INTO alunos (id, nome_completo, matricula, data_nascimento, escola_id, turma_id, horario_inicio, horario_fim, limite_max, idface_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          id,
+          data.nome_completo,
+          data.matricula,
+          data.data_nascimento || null,
+          data.escola_id,
+          data.turma_id || null,
+          data.horario_inicio || null,
+          data.horario_fim || null,
+          data.limite_max || null,
+          data.idface_user_id || null,
+        ]
+      );
       return ok({ id });
     },
-    update: async (id: string, data: { nome_completo?: string; data_nascimento?: string | null; turma_id?: string | null; escola_id?: string }) => {
+    update: async (id: string, data: { nome_completo?: string; data_nascimento?: string | null; turma_id?: string | null; escola_id?: string; horario_inicio?: string | null; horario_fim?: string | null; limite_max?: string | null; idface_user_id?: string | null }) => {
       const sets: string[] = [];
       const vals: any[] = [];
       if (data.nome_completo !== undefined) { sets.push('nome_completo = ?'); vals.push(data.nome_completo); }
       if (data.data_nascimento !== undefined) { sets.push('data_nascimento = ?'); vals.push(data.data_nascimento); }
       if (data.turma_id !== undefined) { sets.push('turma_id = ?'); vals.push(data.turma_id); }
       if (data.escola_id !== undefined) { sets.push('escola_id = ?'); vals.push(data.escola_id); }
+      if (data.horario_inicio !== undefined) { sets.push('horario_inicio = ?'); vals.push(data.horario_inicio); }
+      if (data.horario_fim !== undefined) { sets.push('horario_fim = ?'); vals.push(data.horario_fim); }
+      if (data.limite_max !== undefined) { sets.push('limite_max = ?'); vals.push(data.limite_max); }
+      if (data.idface_user_id !== undefined) { sets.push('idface_user_id = ?'); vals.push(data.idface_user_id); }
       if (sets.length > 0) {
         vals.push(id);
         await run(`UPDATE alunos SET ${sets.join(', ')} WHERE id = ?`, vals);
       }
       return ok(null);
+    },
+    getByMatricula: async (matricula: string, escolaId?: string) => {
+      const rows = await query(
+        `SELECT * FROM alunos WHERE matricula = ? AND ativo = 1 AND (${escolaId ? 'escola_id = ?' : '1=1'}) LIMIT 1`,
+        escolaId ? [matricula, escolaId] : [matricula]
+      );
+      return ok(rows[0] || null);
     },
   },
 

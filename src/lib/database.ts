@@ -94,6 +94,10 @@ CREATE TABLE IF NOT EXISTS alunos (
   data_nascimento TEXT,
   escola_id TEXT NOT NULL REFERENCES escolas(id),
   turma_id TEXT REFERENCES turmas(id),
+  horario_inicio TEXT,
+  horario_fim TEXT,
+  limite_max TEXT,
+  idface_user_id TEXT,
   responsavel_id TEXT,
   ativo INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -285,6 +289,25 @@ async function initDatabase(): Promise<SqlJsDatabase> {
 
   // Run schema (IF NOT EXISTS ensures idempotency)
   db.run(SCHEMA_SQL);
+
+  // Migration: adds attendance time window columns to `alunos` if missing.
+  // This keeps the app backward compatible with databases already persisted in IndexedDB.
+  try {
+    const info = db.exec('PRAGMA table_info(alunos);');
+    const cols: string[] = (info?.[0]?.values || []).map((row: any[]) => row?.[1]).filter(Boolean);
+    const ensureColumn = (name: string, type: string) => {
+      if (cols.includes(name)) return;
+      db.run(`ALTER TABLE alunos ADD COLUMN ${name} ${type}`);
+    };
+
+    ensureColumn('horario_inicio', 'TEXT');
+    ensureColumn('horario_fim', 'TEXT');
+    ensureColumn('limite_max', 'TEXT');
+    ensureColumn('idface_user_id', 'TEXT');
+  } catch (e) {
+    // If migration fails, we still want the app to start.
+    console.warn('Failed to migrate `alunos` schedule columns:', e);
+  }
 
   // Seed only if empty
   const result = db.exec("SELECT COUNT(*) as c FROM usuarios");

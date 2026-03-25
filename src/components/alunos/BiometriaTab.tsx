@@ -11,6 +11,7 @@ interface BiometriaTabProps {
   aluno?: {
     matricula: string;
     escola_id: string;
+    nome_completo?: string;
   };
 }
 
@@ -37,10 +38,60 @@ export function BiometriaTab({ aluno }: BiometriaTabProps) {
       
       const ip_address = configIot.data.ip_address;
 
+      const alunoDbRes = await db.alunos.getByMatricula(aluno.matricula, aluno.escola_id);
+      const alunoDb = alunoDbRes.data || null;
+
+      const toDeviceTime = (t: string | null | undefined) => {
+        if (!t) return null;
+        // O iDFace geralmente espera HH:MM:SS.
+        return String(t).length === 5 ? `${t}:00` : String(t);
+      };
+
+      // O aparelho precisa do usuário cadastrado antes de permitir o `remote_enroll`.
+      // Por isso, criamos o usuário (ou garantimos que ele exista) e depois acionamos a captura.
+      const nomeParaRegistro = (aluno.nome_completo || aluno.matricula).trim();
+
+      const beginTime = toDeviceTime(alunoDb?.horario_inicio);
+      // "Limite máximo para registrar presença" => fim de acesso para o aparelho.
+      const endTime = toDeviceTime(alunoDb?.limite_max ?? alunoDb?.horario_fim);
+
+      const regResponse = await fetch('http://localhost:3000/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ip: ip_address,
+          userData: {
+            id: aluno.matricula,
+            name: nomeParaRegistro,
+            begin_time: beginTime,
+            end_time: endTime
+          },
+        }),
+      });
+
+      if (!regResponse.ok) {
+        throw new Error('Falha na comunicação com a API da ponte (register).');
+      }
+
+      const regData = await regResponse.json();
+      if (!regData.success) {
+        throw new Error(regData.error || 'Erro ao cadastrar usuário no aparelho');
+      }
+
+      const internalId = regData.data?.internalUserId;
+      if (!internalId) {
+        throw new Error('O aparelho não retornou o ID interno do usuário.');
+      }
+
+      // Armazenamos o ID interno retornado pelo iDFace para casar o próximo webhook corretamente.
+      if (alunoDb?.id) {
+        await db.alunos.update(alunoDb.id, { idface_user_id: String(internalId) });
+      }
+
       const response = await fetch('http://localhost:3000/api/capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip: ip_address, userId: aluno.matricula })
+        body: JSON.stringify({ ip: ip_address, internalUserId: String(internalId) })
       });
 
       if (!response.ok) {

@@ -13,9 +13,29 @@ import { type AlunoRow, getAlunoColumns } from '@/components/alunos/AlunoColumns
 import { ResponsavelTab } from '@/components/alunos/ResponsavelTab';
 import { BiometriaTab } from '@/components/alunos/BiometriaTab';
 
-interface Serie { id: string; nome: string; escola_id: string; }
-interface Turma { id: string; nome: string; serie_id: string; escola_id: string; }
+interface Serie { id: string; nome: string; escola_id: string; horario_inicio: string | null; tolerancia_min: number | null; limite_max: string | null; }
+interface Turma { id: string; nome: string; serie_id: string; escola_id: string; horario_inicio: string | null; tolerancia_min: number | null; limite_max: string | null; }
 interface Escola { id: string; nome: string; }
+
+function parseTimeToMinutes(time: string | null | undefined): number | null {
+  if (!time) return null;
+  const parts = String(time).split(':').map(Number);
+  if (parts.length < 2 || parts.some(n => Number.isNaN(n))) return null;
+  const [hh, mm] = parts;
+  return hh * 60 + mm;
+}
+
+function minutesToHHMM(totalMinutes: number): string {
+  const hh = Math.floor(totalMinutes / 60);
+  const mm = totalMinutes % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function addMinutesToTime(time: string, minutes: number): string {
+  const base = parseTimeToMinutes(time);
+  if (base == null) return time;
+  return minutesToHHMM(base + minutes);
+}
 
 export default function Alunos() {
   const [alunos, setAlunos] = useState<AlunoRow[]>([]);
@@ -66,29 +86,75 @@ export default function Alunos() {
     if (!form.nome_completo.trim() || !form.matricula.trim() || !form.escola_id) {
       toast.error('Preencha nome, matrícula e escola.'); return;
     }
+
+    const turmaSelecionada = form.turma_id ? turmas.find(t => t.id === form.turma_id) || null : null;
+    const serieSelecionada = form.serie_id ? series.find(s => s.id === form.serie_id) || null : null;
+
+    const horario_inicio = turmaSelecionada?.horario_inicio ?? serieSelecionada?.horario_inicio ?? null;
+    const tolerancia_min =
+      turmaSelecionada?.tolerancia_min ??
+      serieSelecionada?.tolerancia_min ??
+      15;
+    const horario_fim =
+      horario_inicio != null && tolerancia_min != null ? addMinutesToTime(horario_inicio, Number(tolerancia_min)) : null;
+    const limite_max = turmaSelecionada?.limite_max ?? serieSelecionada?.limite_max ?? null;
+
+    const toDeviceTime = (t: string | null) => {
+      if (!t) return null;
+      return String(t).length === 5 ? `${t}:00` : String(t);
+    };
+
     if (editing) {
-      await db.alunos.update(editing.id, { nome_completo: form.nome_completo, data_nascimento: form.data_nascimento || null, turma_id: form.turma_id || null, escola_id: form.escola_id });
+      await db.alunos.update(editing.id, {
+        nome_completo: form.nome_completo,
+        data_nascimento: form.data_nascimento || null,
+        turma_id: form.turma_id || null,
+        escola_id: form.escola_id,
+        horario_inicio,
+        horario_fim,
+        limite_max
+      });
       toast.success('Aluno atualizado.');
     } else {
-      await db.alunos.insert({ nome_completo: form.nome_completo, matricula: form.matricula, data_nascimento: form.data_nascimento || null, escola_id: form.escola_id, turma_id: form.turma_id || null });
+      const inserted = await db.alunos.insert({
+        nome_completo: form.nome_completo,
+        matricula: form.matricula,
+        data_nascimento: form.data_nascimento || null,
+        escola_id: form.escola_id,
+        turma_id: form.turma_id || null,
+        horario_inicio,
+        horario_fim,
+        limite_max,
+      });
+      const alunoId = inserted.id;
       toast.success('Aluno cadastrado.');
-      
-      // Sync with the biometric device
+
+      // Sync with the biometric device without blocking UI flow if offline
       try {
         const configResult = await db.iotConfig.getByEscola(form.escola_id);
         const config = configResult.data;
         if (config && config.ip_address) {
-          fetch('http://localhost:3000/api/register', {
+          const regResponse = await fetch('http://localhost:3000/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               ip: config.ip_address,
               userData: {
                 id: form.matricula,
-                name: form.nome_completo
+                name: form.nome_completo,
+                begin_time: toDeviceTime(horario_inicio),
+                end_time: toDeviceTime(limite_max),
               }
             })
-          }).catch(err => console.error('Device sync offline or failed:', err));
+          });
+
+          if (regResponse.ok) {
+            const regData = await regResponse.json();
+            const internalId = regData?.data?.internalUserId;
+            if (internalId && alunoId) {
+              await db.alunos.update(alunoId, { idface_user_id: String(internalId) });
+            }
+          }
         }
       } catch (err) {
         console.error('Error during biometric sync:', err);

@@ -72,10 +72,43 @@ export default function IoTConfig() {
 
   const handleSync = async () => {
     if (status !== 'connected') { toast.error('Conecte-se ao terminal antes de sincronizar.'); return; }
+    if (!ip.trim()) { toast.error('Configure o IP do equipamento antes de sincronizar.'); return; }
+    if (!escolaId) { toast.error('Selecione uma escola antes de sincronizar.'); return; }
+
     setSyncing(true);
-    await new Promise(r => setTimeout(r, 2500));
-    setSyncing(false);
-    toast.success('Alunos sincronizados com o terminal iDFace.');
+    try {
+      const { data: alunos } = await db.alunos.listByEscola(escolaId);
+      const users = (alunos || [])
+        .filter((a: any) => a?.matricula != null)
+        .map((a: any) => ({
+          id: String(a.matricula),
+          name: String(a.nome_completo || a.matricula),
+          begin_time: a?.horario_inicio ? `${a.horario_inicio}:00` : null,
+          end_time: (a?.limite_max ? `${a.limite_max}:00` : a?.horario_fim ? `${a.horario_fim}:00` : null),
+        }));
+
+      const response = await fetch('http://localhost:3000/api/sync-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip, users }),
+      });
+
+      if (!response.ok) throw new Error('Falha na comunicação para sincronizar usuários.');
+
+      const payload = await response.json();
+      if (!payload?.success) throw new Error(payload?.error || 'Falha ao sincronizar usuários no aparelho.');
+
+      const created = payload?.data?.created ?? 0;
+      const failedCount = payload?.data?.failedCount ?? 0;
+      toast.success(
+        `Sincronização concluída. Enviados: ${created}. Falhas: ${failedCount}.`
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Falha ao sincronizar alunos com o terminal.');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const statusCfg: Record<ConnectionStatus, { label: string; variant: 'default' | 'secondary' | 'destructive'; icon: React.ElementType }> = {
