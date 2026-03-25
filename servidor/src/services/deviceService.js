@@ -126,7 +126,11 @@ async function registerUser(ip, userData) {
     if (error.response && error.response.status === 401) {
       sessionToken = null;
     }
-    throw new Error(`Erro na criação do usuário: ${error.message}`);
+    const details =
+      error.response && error.response.data
+        ? ` | payload: ${typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data)}`
+        : '';
+    throw new Error(`Erro na criação do usuário: ${error.message}${details}`);
   }
 }
 

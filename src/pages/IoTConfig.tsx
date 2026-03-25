@@ -78,13 +78,19 @@ export default function IoTConfig() {
     setSyncing(true);
     try {
       const { data: alunos } = await db.alunos.listByEscola(escolaId);
+      const toDeviceTime = (t: any) => {
+        if (!t) return null;
+        const s = String(t);
+        return s.length >= 5 ? s.slice(0, 5) : s;
+      };
+
       const users = (alunos || [])
         .filter((a: any) => a?.matricula != null)
         .map((a: any) => ({
           id: String(a.matricula),
           name: String(a.nome_completo || a.matricula),
-          begin_time: a?.horario_inicio ? `${a.horario_inicio}:00` : null,
-          end_time: (a?.limite_max ? `${a.limite_max}:00` : a?.horario_fim ? `${a.horario_fim}:00` : null),
+          begin_time: toDeviceTime(a?.horario_inicio),
+          end_time: toDeviceTime(a?.limite_max ?? a?.horario_fim),
         }));
 
       const response = await fetch('http://localhost:3000/api/sync-users', {

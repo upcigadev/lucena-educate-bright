@@ -101,7 +101,9 @@ export default function Alunos() {
 
     const toDeviceTime = (t: string | null) => {
       if (!t) return null;
-      return String(t).length === 5 ? `${t}:00` : String(t);
+      // O Control iD costuma aceitar HH:MM (sem segundos).
+      const s = String(t);
+      return s.length >= 5 ? s.slice(0, 5) : s;
     };
 
     if (editing) {

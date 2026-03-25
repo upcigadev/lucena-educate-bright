@@ -55,11 +55,9 @@ function GlobalDeviceMonitor() {
             });
 
             // No iDFace, o "event" pode vir como números diferentes conforme o tipo de acesso.
-            // A integração anterior considerava apenas "7"; vamos aceitar "6" e "7" para cobrir "entrada".
-            const event = log?.event != null ? String(log.event) : null;
-            const isEntrada = event == null || event === '6' || event === '7';
-
-            if (aluno && isEntrada) {
+            // Aceitamos também "6" para cobrir Acesso Liberado.
+            const event = log?.event != null ? String(log.event) : undefined;
+            if (aluno && (event === undefined || ['6', '7'].includes(String(event)))) {
               const now = new Date();
               const dataDeHoje = now.toISOString().split('T')[0];
               const horaAtual = now.toTimeString().split(' ')[0].substring(0, 5); // HH:MM

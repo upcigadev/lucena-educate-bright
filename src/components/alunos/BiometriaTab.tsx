@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { ScanFace, Send, Wifi, Monitor } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '@/lib/mock-db';
+import { io } from 'socket.io-client';
 
 interface BiometriaTabProps {
   aluno?: {
@@ -17,6 +18,33 @@ interface BiometriaTabProps {
 
 export function BiometriaTab({ aluno }: BiometriaTabProps) {
   const [loading, setLoading] = useState(false);
+  const [fotoRecente, setFotoRecente] = useState<string | null>(null);
+
+  useEffect(() => {
+    const socket = io('http://localhost:3000', { reconnectionAttempts: 5, reconnectionDelay: 2000 });
+
+    socket.on('device:accessLog', (payload: any) => {
+      if (payload?.type === 'photo' && payload?.data) {
+        if (typeof payload.data === 'string') {
+          setFotoRecente(payload.data);
+          return;
+        }
+
+        // Fallback: tenta converter caso o payload venha como objeto/bytes.
+        try {
+          const raw = payload.data?.data ?? payload.data;
+          if (raw) {
+            const base64 = btoa(new Uint8Array(raw).reduce((data: string, byte: number) => data + String.fromCharCode(byte), ''));
+            setFotoRecente(base64);
+          }
+        } catch {
+          // Mantém foto anterior se não for possível converter.
+        }
+      }
+    });
+
+    return () => socket.disconnect();
+  }, []);
 
   const handleCapture = async () => {
     if (!aluno?.matricula || !aluno?.escola_id) {
@@ -43,8 +71,9 @@ export function BiometriaTab({ aluno }: BiometriaTabProps) {
 
       const toDeviceTime = (t: string | null | undefined) => {
         if (!t) return null;
-        // O iDFace geralmente espera HH:MM:SS.
-        return String(t).length === 5 ? `${t}:00` : String(t);
+        // O Control iD costuma aceitar HH:MM (sem segundos).
+        const s = String(t);
+        return s.length >= 5 ? s.slice(0, 5) : s;
       };
 
       // O aparelho precisa do usuário cadastrado antes de permitir o `remote_enroll`.
@@ -136,8 +165,16 @@ export function BiometriaTab({ aluno }: BiometriaTabProps) {
 
           {/* Device illustration area */}
           <div className="relative aspect-[16/9] w-full rounded-xl bg-muted/50 flex flex-col items-center justify-center gap-4 border border-border">
-            <div className="h-16 w-16 rounded-2xl bg-primary/5 border-2 border-dashed border-primary/20 flex items-center justify-center">
-              <Monitor className="h-8 w-8 text-primary/40" />
+            <div className="h-16 w-16 rounded-2xl bg-primary/5 border-2 border-dashed border-primary/20 overflow-hidden flex items-center justify-center">
+              {fotoRecente ? (
+                <img
+                  src={`data:image/jpeg;base64,${fotoRecente}`}
+                  alt="Foto recente do aparelho"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <Monitor className="h-8 w-8 text-primary/40" />
+              )}
             </div>
             <div className="text-center space-y-1">
               <p className="text-sm font-medium text-foreground">Terminal de Reconhecimento Facial</p>
