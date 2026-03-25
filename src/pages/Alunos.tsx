@@ -72,6 +72,27 @@ export default function Alunos() {
     } else {
       await db.alunos.insert({ nome_completo: form.nome_completo, matricula: form.matricula, data_nascimento: form.data_nascimento || null, escola_id: form.escola_id, turma_id: form.turma_id || null });
       toast.success('Aluno cadastrado.');
+      
+      // Sync with the biometric device
+      try {
+        const configResult = await db.iotConfig.getByEscola(form.escola_id);
+        const config = configResult.data;
+        if (config && config.ip_address) {
+          fetch('http://localhost:3000/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ip: config.ip_address,
+              userData: {
+                id: form.matricula,
+                name: form.nome_completo
+              }
+            })
+          }).catch(err => console.error('Device sync offline or failed:', err));
+        }
+      } catch (err) {
+        console.error('Error during biometric sync:', err);
+      }
     }
     setOpen(false);
     load();
@@ -126,7 +147,7 @@ export default function Alunos() {
               </div>
             </TabsContent>
             <TabsContent value="resp"><ResponsavelTab form={form} onFormChange={(updates) => setForm({ ...form, ...updates })} /></TabsContent>
-            <TabsContent value="biometria"><BiometriaTab /></TabsContent>
+            <TabsContent value="biometria"><BiometriaTab aluno={form} /></TabsContent>
           </Tabs>
         </SheetContent>
       </Sheet>

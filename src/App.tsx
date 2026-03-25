@@ -1,12 +1,14 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom';
-import { Toaster as Sonner } from '@/components/ui/sonner';
+import { io } from 'socket.io-client';
+import { Toaster as Sonner, toast } from 'sonner';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/stores/authStore';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { getDb } from '@/lib/database';
+import { db } from '@/lib/mock-db';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Escolas from '@/pages/Escolas';
@@ -21,6 +23,56 @@ import Justificativas from '@/pages/Justificativas';
 import NotFound from '@/pages/NotFound';
 
 const queryClient = new QueryClient();
+
+function GlobalDeviceMonitor() {
+  useEffect(() => {
+    const socket = io('http://localhost:3000', {
+      reconnectionAttempts: 10,
+      reconnectionDelay: 5000,
+    });
+
+    socket.on('device:accessLog', async (payload: any) => {
+      if (payload.type === 'log' && Array.isArray(payload.data)) {
+        try {
+          const alunosRes = await db.alunos.list();
+          const alunos = alunosRes.data || [];
+          
+          for (const log of payload.data) {
+            // Find student by matricula matching user_id
+            const aluno = alunos.find(a => a.matricula === String(log.user_id));
+            if (aluno && (log.event === undefined || String(log.event) === "7")) {
+              const now = new Date();
+              const dataDeHoje = now.toISOString().split('T')[0];
+              const horaAtual = now.toTimeString().split(' ')[0].substring(0, 5); // HH:MM
+              
+              await db.frequencias.insert({
+                aluno_id: aluno.id,
+                turma_id: aluno.turma_id,
+                data: dataDeHoje,
+                hora_entrada: horaAtual,
+                status: 'presente',
+                dispositivo_id: String(log.device_id || '')
+              });
+              
+              toast.success(`Presença registrada: ${aluno.nome_completo}`, {
+                icon: '👋',
+                duration: 5000
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao processar log do aparelho:', error);
+        }
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  return null;
+}
 
 function AuthGuard({ children }: { children: ReactNode }) {
   const { user, loading, setUser, setLoading, loadPerfil } = useAuthStore();
@@ -80,6 +132,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <DbInitializer>
+        <GlobalDeviceMonitor />
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />

@@ -21,9 +21,13 @@ export function BiometriaDemo() {
   const [connected, setConnected] = useState(false);
   const [logs, setLogs] = useState<AccessLogEvent[]>([]);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
-  const [ipAparelho, setIpAparelho] = useState('192.168.0.10');
-  const [userIdDemo, setUserIdDemo] = useState('1234');
+  // CORREÇÃO 1: Salvando o IP no LocalStorage para não sumir ao sair da tela
+  const [ipAparelho, setIpAparelho] = useState(() => localStorage.getItem('idface_ip') || '192.168.0.10');
   const [pendingPhoto, setPendingPhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('idface_ip', ipAparelho);
+  }, [ipAparelho]);
 
   useEffect(() => {
     // Conectar ao websocket da ponte local
@@ -44,7 +48,6 @@ export function BiometriaDemo() {
 
     newSocket.on('device:accessLog', (payload: any) => {
       if (payload.type === 'photo') {
-        // Guarda a foto temporariamente até chegar o log de liberação
         const base64 = typeof payload.data === 'string' 
           ? payload.data 
           : btoa(new Uint8Array(payload.data.data).reduce((data, byte) => data + String.fromCharCode(byte), ''));
@@ -54,19 +57,16 @@ export function BiometriaDemo() {
 
       if (payload.type === 'log') {
         const log = payload.data;
-        const isAuthorized = String(log.event) === "7"; // 7 = Acesso Liberado no iDFace
+        const isAuthorized = String(log.event) === "7"; 
         
-        // Usamos setPendingPhoto(currentPhoto => ...) para ler o estado mais recente de pendingPhoto e depois limpá-lo sem causar warnings de dependência no useEffect
-        setPendingPhoto((currentPhoto) => {
-          setLogs((prevLogs) => [{
-            userId: log.user_id,
-            status: isAuthorized ? 'autorizado' : 'bloqueado',
-            timestamp: new Date(parseInt(log.time) * 1000).toISOString(),
-            photoBase64: currentPhoto || undefined // Anexa a foto que chegou na requisição anterior
-          }, ...prevLogs].slice(0, 20));
-          return null; // Limpa para o próximo acesso
-        });
+        setLogs((prevLogs) => [{
+          userId: log.user_id,
+          status: isAuthorized ? 'autorizado' : 'bloqueado',
+          timestamp: new Date(parseInt(log.time) * 1000).toISOString(),
+          photoBase64: pendingPhoto || undefined
+        }, ...prevLogs].slice(0, 20));
         
+        setPendingPhoto(null);
         toast(isAuthorized ? 'Acesso Liberado!' : 'Acesso Negado!', { 
           icon: isAuthorized ? '✅' : '❌' 
         });
@@ -81,7 +81,7 @@ export function BiometriaDemo() {
       newSocket.off('device:accessLog');
       newSocket.close();
     };
-  }, []);
+  }, [pendingPhoto]);
 
   const handleConnectDevice = async () => {
     try {
@@ -92,9 +92,9 @@ export function BiometriaDemo() {
         body: JSON.stringify({ ip: ipAparelho })
       });
       if (!response.ok) throw new Error('Falha ao conectar no aparelho');
-      toast.success('Comando de conexão enviado com sucesso!');
+      toast.success('Aparelho respondeu com sucesso!');
     } catch (error) {
-      toast.error('Erro ao conectar: verifique se a ponte está rodando e o IP está correto.');
+      toast.error('Erro de conexão. Verifique o IP e a Ponte.');
     } finally {
       setLoadingAction(null);
     }
@@ -103,15 +103,41 @@ export function BiometriaDemo() {
   const handleStartCapture = async () => {
     try {
       setLoadingAction('capture');
-      const response = await fetch('http://localhost:3000/api/capture', {
+      
+      // CORREÇÃO 2: Criar o usuário antes de pedir a câmera
+      const demoMatricula = Math.floor(Math.random() * 100000).toString();
+      toast.info('Alocando sessão no aparelho...');
+      
+      const regResponse = await fetch('http://localhost:3000/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip: ipAparelho, internalUserId: userIdDemo })
+        body: JSON.stringify({
+          ip: ipAparelho,
+          userData: { name: "Usuário Teste", id: demoMatricula }
+        })
       });
-      if (!response.ok) throw new Error('Falha ao iniciar captura facial');
-      toast.success('Câmera ativada! Posicione-se em frente ao aparelho.');
-    } catch (error) {
-      toast.error('Erro ao iniciar captura.');
+
+      if (!regResponse.ok) throw new Error('Falha na comunicação.');
+      const regData = await regResponse.json();
+      if (!regData.success) throw new Error(regData.error);
+      
+      const internalId = regData.data.internalUserId;
+
+      // Agora acionamos a câmera para o ID que acabamos de criar
+      toast.info('Acionando câmera...');
+      const capResponse = await fetch('http://localhost:3000/api/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: ipAparelho, internalUserId: internalId })
+      });
+
+      if (!capResponse.ok) throw new Error('Falha ao ativar a câmera.');
+      const capData = await capResponse.json();
+      if (!capData.success) throw new Error(capData.error);
+
+      toast.success('Câmera ativada! Por favor, olhe para o aparelho.');
+    } catch (error: any) {
+      toast.error(`Falha: ${error.message}`);
     } finally {
       setLoadingAction(null);
     }
@@ -140,17 +166,7 @@ export function BiometriaDemo() {
                 value={ipAparelho}
                 onChange={(e) => setIpAparelho(e.target.value)}
                 placeholder="Ex: 192.168.0.10"
-                className="h-9 w-full sm:w-[130px]"
-              />
-            </div>
-            <div className="space-y-1.5 flex-1 sm:flex-initial">
-              <Label htmlFor="userIdDemo" className="text-xs ml-1 font-medium text-muted-foreground">User ID</Label>
-              <Input 
-                id="userIdDemo"
-                value={userIdDemo}
-                onChange={(e) => setUserIdDemo(e.target.value)}
-                placeholder="Ex: 1234"
-                className="h-9 w-full sm:w-[90px]"
+                className="h-9 w-full sm:w-[150px]"
               />
             </div>
           </div>

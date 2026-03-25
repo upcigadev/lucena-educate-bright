@@ -1,26 +1,73 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Wifi, WifiOff, RefreshCw, Send, MonitorSmartphone } from 'lucide-react';
+import { db } from '@/lib/mock-db';
+import { useAuthStore } from '@/stores/authStore';
 
 type ConnectionStatus = 'idle' | 'testing' | 'connected' | 'disconnected';
 
 export default function IoTConfig() {
+  const { escolaAtiva } = useAuthStore();
+  const [escolas, setEscolas] = useState<{id: string, nome: string}[]>([]);
+  const [escolaId, setEscolaId] = useState<string>(escolaAtiva || '');
   const [ip, setIp] = useState('');
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [syncing, setSyncing] = useState(false);
 
+  useEffect(() => {
+    db.escolas.list().then(res => {
+      const listas = (res.data || []).map((e: any) => ({ id: e.id, nome: e.nome }));
+      setEscolas(listas);
+      if (!escolaId && listas.length > 0) {
+        setEscolaId(escolaAtiva || listas[0].id);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (escolaId) {
+      db.iotConfig.getByEscola(escolaId).then(res => {
+        if (res.data?.ip_address) {
+          setIp(res.data.ip_address);
+          setStatus('connected');
+        } else {
+          setIp('');
+          setStatus('idle');
+        }
+      });
+    }
+  }, [escolaId]);
+
   const handleTestConnection = async () => {
     if (!ip.trim()) { toast.error('Informe o endereço IP do equipamento.'); return; }
+    if (!escolaId) { toast.error('Selecione uma escola primeiro.'); return; }
+    
     setStatus('testing');
-    await new Promise(r => setTimeout(r, 1800));
-    setStatus('connected');
-    toast.success('Conexão estabelecida com sucesso!');
+    try {
+      const response = await fetch('http://localhost:3000/api/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip })
+      });
+      
+      if (!response.ok) throw new Error('Falha na comunicação');
+      
+      await db.iotConfig.upsert({ escola_id: escolaId, ip_address: ip, ativo: true });
+      
+      setStatus('connected');
+      toast.success('Conexão bem-sucedida e IP salvo com sucesso!');
+    } catch (err) {
+      console.error(err);
+      setStatus('disconnected');
+      toast.error('Erro na conexão. Verifique o IP e o aparelho.');
+    }
   };
 
   const handleSync = async () => {
@@ -55,6 +102,15 @@ export default function IoTConfig() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Escola</Label>
+              <Select value={escolaId} onValueChange={setEscolaId}>
+                <SelectTrigger><SelectValue placeholder="Selecione a escola para configurar..." /></SelectTrigger>
+                <SelectContent>
+                  {escolas.map(e => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="device-ip" className="text-sm font-medium">Endereço IP do Equipamento</Label>
               <Input id="device-ip" placeholder="192.168.0.201" value={ip} onChange={e => setIp(e.target.value)} className="font-mono" />

@@ -1,10 +1,65 @@
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ScanFace, Send, Wifi, Monitor } from 'lucide-react';
+import { toast } from 'sonner';
+import { db } from '@/lib/mock-db';
 
-export function BiometriaTab() {
+interface BiometriaTabProps {
+  aluno?: {
+    matricula: string;
+    escola_id: string;
+  };
+}
+
+export function BiometriaTab({ aluno }: BiometriaTabProps) {
+  const [loading, setLoading] = useState(false);
+
+  const handleCapture = async () => {
+    if (!aluno?.matricula || !aluno?.escola_id) {
+      toast.error('Preencha pelo menos a escola e matrícula antes de registrar a biometria.');
+      return;
+    }
+
+    setLoading(true);
+    toast.info('Aguardando leitura no aparelho...');
+
+    try {
+      const configIot = await db.iotConfig.getByEscola(aluno.escola_id);
+      if (!configIot?.data?.ip_address) {
+        setLoading(false);
+        return toast.error("Equipamento não configurado", {
+          description: "Por favor, vá em 'Configuração IoT' e salve o IP do aparelho para esta escola antes de capturar a biometria."
+        });
+      }
+      
+      const ip_address = configIot.data.ip_address;
+
+      const response = await fetch('http://localhost:3000/api/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: ip_address, userId: aluno.matricula })
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha na comunicação com a API da ponte.');
+      }
+      
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Erro na captura do aparelho');
+      }
+
+      toast.success('Leitura solicitada ao aparelho com sucesso!');
+    } catch (error: any) {
+      console.error(error);
+      toast.error(`Falha ao iniciar captura: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <div className="space-y-4 mt-3">
       <Card className="border-dashed border-2">
@@ -51,9 +106,14 @@ export function BiometriaTab() {
           </div>
 
           {/* Main action button */}
-          <Button size="lg" className="w-full gap-2 text-base font-semibold h-12">
+          <Button 
+            size="lg" 
+            className="w-full gap-2 text-base font-semibold h-12"
+            onClick={handleCapture}
+            disabled={loading}
+          >
             <Send className="h-5 w-5" />
-            Enviar Comando de Cadastro para o Aparelho
+            {loading ? 'Iniciando captura...' : 'Enviar Comando de Cadastro para o Aparelho'}
           </Button>
 
           <p className="text-xs text-muted-foreground text-center">
