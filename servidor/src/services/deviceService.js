@@ -104,6 +104,7 @@ async function registerUser(ip, userData) {
     }
 
     const createValues = {
+      id: parseInt(userData.id),
       name: userData.name,
       registration: userData.id,
     };
@@ -119,6 +120,28 @@ async function registerUser(ip, userData) {
 
     if (response.data && response.data.ids && response.data.ids.length > 0) {
       const internalId = response.data.ids[0];
+
+      // ─── Vínculo ao Grupo de Acesso Padrão ───────────────────────────────
+      // No Control iD, criar o usuário apenas registra a identidade; sem
+      // pertencer a um Grupo de Acesso o equipamento nega a entrada.
+      // group_id: 1 é o Grupo Padrão que libera o acesso geral.
+      // Para regras por turno (manhã/tarde), criar grupos separados e
+      // substituir o group_id conforme o horário do aluno.
+      try {
+        await axios.post(`http://${ip}/create_objects.fcgi?session=${sessionToken}`, {
+          object: 'user_groups',
+          values: [{ user_id: internalId, group_id: 1 }]
+        }, { timeout: 10000 });
+        console.log(`[deviceService] Usuário ${internalId} vinculado ao Grupo de Acesso 1.`);
+      } catch (groupErr) {
+        console.warn(
+          `[deviceService] ⚠️  Falha ao vincular usuário ${internalId} ao grupo de acesso:`,
+          groupErr?.message || groupErr
+        );
+        // Não interrompe o fluxo — a identidade já foi criada com sucesso.
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       return { status: 'success', internalUserId: internalId, created: true };
     }
     throw new Error('Falha ao obter o ID interno de criação do aparelho.');

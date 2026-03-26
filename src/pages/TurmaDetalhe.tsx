@@ -6,7 +6,7 @@ import { ptBR } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -20,6 +20,7 @@ interface FreqAluno {
   nome: string;
   matricula: string;
   iniciais: string;
+  avatarUrl: string | null;
   status: StatusType;
   horaEntrada: string | null;
 }
@@ -69,6 +70,7 @@ export default function TurmaDetalhe() {
         nome: a.nome_completo,
         matricula: a.matricula,
         iniciais: getInitials(a.nome_completo),
+        avatarUrl: a.avatar_url || null,
         status: freq ? (freq.status as StatusType) : 'falta',
         horaEntrada: freq?.hora_entrada || null,
       };
@@ -159,7 +161,12 @@ export default function TurmaDetalhe() {
                   const colorClass = avatarColors[idx % avatarColors.length];
                   return (
                     <TableRow key={aluno.id}>
-                      <TableCell><Avatar className="h-9 w-9"><AvatarFallback className={cn('text-xs font-semibold', colorClass)}>{aluno.iniciais}</AvatarFallback></Avatar></TableCell>
+                      <TableCell>
+                        <Avatar className="h-9 w-9">
+                          <AvatarImage src={aluno.avatarUrl || ''} className="object-cover" />
+                          <AvatarFallback className={cn('text-xs font-semibold', avatarColors[freqAlunos.indexOf(aluno) % avatarColors.length])}>{aluno.iniciais}</AvatarFallback>
+                        </Avatar>
+                      </TableCell>
                       <TableCell><span className="font-medium">{aluno.nome}</span><span className="block text-xs text-muted-foreground sm:hidden">{aluno.matricula}</span></TableCell>
                       <TableCell className="hidden sm:table-cell text-muted-foreground text-sm tabular-nums">{aluno.matricula}</TableCell>
                       <TableCell><Badge variant="outline" className={cn('text-xs font-medium', cfg.className)}>{cfg.label}</Badge></TableCell>

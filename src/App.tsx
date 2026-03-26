@@ -1,4 +1,4 @@
-import { useEffect, useState, ReactNode } from 'react';
+import { useEffect, useRef, useState, ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
@@ -9,6 +9,9 @@ import { useAuthStore } from '@/stores/authStore';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { getDb } from '@/lib/database';
 import { db } from '@/lib/mock-db';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { X } from 'lucide-react';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Escolas from '@/pages/Escolas';
@@ -20,6 +23,7 @@ import EscolaDetalhe from '@/pages/EscolaDetalhe';
 import TurmaDetalhe from '@/pages/TurmaDetalhe';
 import IoTConfig from '@/pages/IoTConfig';
 import Justificativas from '@/pages/Justificativas';
+import Frequencia from '@/pages/Frequencia';
 import NotFound from '@/pages/NotFound';
 
 const queryClient = new QueryClient();
@@ -32,21 +36,66 @@ function timeToMinutes(time: string | null | undefined): number | null {
   return hh * 60 + mm;
 }
 
+interface AccessFlash {
+  id: string;
+  photo: string | null;
+  nome: string;
+  matricula: string;
+  horario: string;
+  status: 'presente' | 'atrasado' | 'acesso';
+}
+
 function GlobalDeviceMonitor() {
+  const [flash, setFlash] = useState<AccessFlash | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showFlash = (entry: AccessFlash) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setFlash(entry);
+    timerRef.current = setTimeout(() => setFlash(null), 8000);
+  };
+
   useEffect(() => {
     const socket = io('http://localhost:3000', {
       reconnectionAttempts: 10,
       reconnectionDelay: 5000,
     });
 
+    // Buffer: photos arrive before the log; keyed by userId
+    const photoBuffer = new Map<string, string>();
+
     socket.on('device:accessLog', async (payload: any) => {
-      if (payload.type === 'log' && Array.isArray(payload.data)) {
+      // ── Photo event ──────────────────────────────────────────────────
+      if (payload?.type === 'photo' && payload?.userId != null && payload?.data) {
+        const userId = String(payload.userId);
+        let dataUri = payload.data as string;
+        if (!dataUri.startsWith('data:image')) dataUri = `data:image/jpeg;base64,${dataUri}`;
+        photoBuffer.set(userId, dataUri);
+
+        try {
+          const alunosRes = await db.alunos.list();
+          const aluno = (alunosRes.data || []).find(a => String(a.matricula) === userId || (a.idface_user_id && String(a.idface_user_id) === userId));
+          if (aluno?.id) {
+            await db.alunos.update(aluno.id, { avatar_url: dataUri });
+            queryClient.invalidateQueries({ queryKey: ['alunos'] });
+          }
+        } catch (e) {
+          console.error('Erro ao salvar foto:', e);
+        }
+        return;
+      }
+
+      // ── Log event ────────────────────────────────────────────────────
+      if (payload.type === 'log') {
+        const logs: any[] = Array.isArray(payload.data)
+          ? payload.data
+          : payload.data ? [payload.data] : [];
+        if (logs.length === 0) return;
         try {
           const alunosRes = await db.alunos.list();
           const alunos = alunosRes.data || [];
-          
-          for (const log of payload.data) {
-            // Find student by matricula matching user_id
+
+          for (const log of logs) {
             const logUserId = log?.user_id != null ? String(log.user_id) : null;
             const aluno = alunos.find(a => {
               const matriculaMatch = a.matricula === logUserId;
@@ -54,28 +103,22 @@ function GlobalDeviceMonitor() {
               return matriculaMatch || idfaceUserMatch;
             });
 
-            // No iDFace, o "event" pode vir como números diferentes conforme o tipo de acesso.
-            // Aceitamos também "6" para cobrir Acesso Liberado.
             const event = log?.event != null ? String(log.event) : undefined;
-            if (aluno && (event === undefined || ['6', '7'].includes(String(event)))) {
-              const now = new Date();
-              const dataDeHoje = now.toISOString().split('T')[0];
-              const horaAtual = now.toTimeString().split(' ')[0].substring(0, 5); // HH:MM
+            const now = new Date();
+            const dataDeHoje = now.toISOString().split('T')[0];
+            const horaAtual = now.toTimeString().split(' ')[0].substring(0, 5);
+            const horaAtualMin = timeToMinutes(horaAtual);
 
-              const horaAtualMin = timeToMinutes(horaAtual);
+            if (aluno && (event === undefined || ['6', '7'].includes(String(event)))) {
               const limiteMaxMin = timeToMinutes(aluno.limite_max);
               const horarioFimMin = timeToMinutes(aluno.horario_fim);
 
-              // Se passou do horário máximo de registro, ignoramos silenciosamente.
-              if (horaAtualMin != null && limiteMaxMin != null && horaAtualMin > limiteMaxMin) {
-                continue;
-              }
+              if (horaAtualMin != null && limiteMaxMin != null && horaAtualMin > limiteMaxMin) continue;
 
               const historico = await db.frequencias.listByAlunos([aluno.id], dataDeHoje, dataDeHoje);
               if (!historico.data || historico.data.length === 0) {
                 const status = (horaAtualMin != null && horarioFimMin != null && horaAtualMin > horarioFimMin)
-                  ? 'atrasado'
-                  : 'presente';
+                  ? 'atrasado' : 'presente';
 
                 await db.frequencias.insert({
                   aluno_id: aluno.id,
@@ -86,12 +129,33 @@ function GlobalDeviceMonitor() {
                   dispositivo_id: String(log.device_id || '')
                 });
 
-                const statusLabel = status === 'presente' ? 'Presente' : 'Atrasado';
-                toast.success(`Presença registrada (${statusLabel}): ${aluno.nome_completo}`, {
-                  icon: '👋',
-                  duration: 5000
+                const photo = logUserId ? (photoBuffer.get(logUserId) ?? aluno.avatar_url ?? null) : null;
+                const horario = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                showFlash({
+                  id: `${aluno.id}-${Date.now()}`,
+                  photo,
+                  nome: aluno.nome_completo,
+                  matricula: aluno.matricula,
+                  horario,
+                  status,
                 });
+
+                const statusLabel = status === 'presente' ? 'Presente ✅' : 'Atrasado ⏰';
+                toast.success(`${statusLabel}: ${aluno.nome_completo}`, { icon: '👋', duration: 5000 });
+              } else {
+                // Já registrado hoje — apenas mostra o flash com foto
+                if (logUserId) {
+                  const photo = photoBuffer.get(logUserId) ?? aluno.avatar_url ?? null;
+                  const horario = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  showFlash({ id: `${aluno.id}-${Date.now()}`, photo, nome: aluno.nome_completo, matricula: aluno.matricula, horario, status: 'acesso' });
+                }
               }
+            } else if (!aluno && logUserId) {
+              // Aluno não cadastrado — exibe flash mesmo assim
+              const photo = photoBuffer.get(logUserId) ?? null;
+              const horario = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              showFlash({ id: `unknown-${Date.now()}`, photo, nome: `Matrícula ${logUserId}`, matricula: logUserId, horario, status: 'acesso' });
             }
           }
         } catch (error) {
@@ -100,12 +164,44 @@ function GlobalDeviceMonitor() {
       }
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return () => { socket.disconnect(); };
   }, []);
 
-  return null;
+  // Status badge config for flash
+  const flashCfg = flash ? {
+    presente:  { label: 'Presente',  cls: 'bg-emerald-500/15 text-emerald-700 border-emerald-200' },
+    atrasado:  { label: 'Atrasado',  cls: 'bg-amber-500/15 text-amber-700 border-amber-200' },
+    acesso:    { label: 'Acesso',    cls: 'bg-sky-500/15 text-sky-700 border-sky-200' },
+  }[flash.status] : null;
+
+  return flash && flashCfg ? (
+    <div className="fixed bottom-6 right-6 z-[100] w-72 rounded-2xl border bg-card shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+      {/* Top colored strip */}
+      <div className={`h-1 w-full ${
+        flash.status === 'presente' ? 'bg-emerald-500' :
+        flash.status === 'atrasado' ? 'bg-amber-500' : 'bg-sky-500'
+      }`} />
+      <div className="p-4 flex gap-3 items-center">
+        <Avatar className="h-16 w-16 rounded-xl shrink-0">
+          <AvatarImage src={flash.photo || ''} className="object-cover" />
+          <AvatarFallback className="rounded-xl bg-primary/10 text-primary font-bold text-lg">
+            {flash.nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm text-foreground truncate leading-tight">{flash.nome}</p>
+          <p className="text-xs text-muted-foreground font-mono mt-0.5">{flash.matricula}</p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${flashCfg.cls}`}>{flashCfg.label}</Badge>
+            <span className="text-[10px] text-muted-foreground font-mono">{flash.horario}</span>
+          </div>
+        </div>
+        <button onClick={() => setFlash(null)} className="shrink-0 text-muted-foreground hover:text-foreground">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  ) : null;
 }
 
 function AuthGuard({ children }: { children: ReactNode }) {
@@ -181,6 +277,7 @@ const App = () => (
               <Route path="alunos" element={<Alunos />} />
               <Route path="responsaveis" element={<Responsaveis />} />
               <Route path="iot-config" element={<IoTConfig />} />
+              <Route path="frequencia" element={<Frequencia />} />
               <Route path="justificativas" element={<Justificativas />} />
             </Route>
             <Route path="*" element={<NotFound />} />

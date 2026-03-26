@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS alunos (
   horario_fim TEXT,
   limite_max TEXT,
   idface_user_id TEXT,
+  avatar_url TEXT,
   responsavel_id TEXT,
   ativo INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -304,6 +305,7 @@ async function initDatabase(): Promise<SqlJsDatabase> {
     ensureColumn('horario_fim', 'TEXT');
     ensureColumn('limite_max', 'TEXT');
     ensureColumn('idface_user_id', 'TEXT');
+    ensureColumn('avatar_url', 'TEXT');
   } catch (e) {
     // If migration fails, we still want the app to start.
     console.warn('Failed to migrate `alunos` schedule columns:', e);

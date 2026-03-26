@@ -1,44 +1,367 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { db } from '@/lib/mock-db';
-import { StatCard } from '@/components/shared/StatCard';
-import { Card, CardContent } from '@/components/ui/card';
-import { School, Users, GraduationCap, UserCog, BarChart3 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  School, Users, GraduationCap, UserCog,
+  TrendingUp, TrendingDown, AlertTriangle,
+  CheckCircle2, Clock, FileText, ArrowRight,
+} from 'lucide-react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
+interface EscolaStats {
+  id: string;
+  nome: string;
+  totalAlunos: number;
+  presentes: number;
+  freqPct: number;
+}
+
+interface AlunoRecente {
+  id: string;
+  nome: string;
+  matricula: string;
+  avatarUrl: string | null;
+  horaEntrada: string | null;
+  status: string;
+  escolaNome: string;
+}
+
+function StatCard({ title, value, icon: Icon, color = 'primary', suffix = '' }: {
+  title: string; value: number | string; icon: React.ElementType;
+  color?: 'primary' | 'success' | 'warning' | 'danger' | 'info';
+  suffix?: string;
+}) {
+  const colors = {
+    primary: 'bg-primary/10 text-primary',
+    success: 'bg-emerald-500/10 text-emerald-600',
+    warning: 'bg-amber-500/10 text-amber-600',
+    danger:  'bg-destructive/10 text-destructive',
+    info:    'bg-sky-500/10 text-sky-600',
+  };
+  return (
+    <Card>
+      <CardContent className="p-5 flex items-center gap-4">
+        <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 ${colors[color]}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-sm text-muted-foreground">{title}</p>
+          <p className="text-2xl font-bold tabular-nums text-card-foreground">{value}{suffix}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const { perfil } = useAuthStore();
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const todayLabel = format(new Date(), "dd 'de' MMMM", { locale: ptBR });
+
   const [stats, setStats] = useState({ escolas: 0, alunos: 0, professores: 0, diretores: 0 });
+  const [freqHoje, setFreqHoje] = useState({ presentes: 0, atrasados: 0, faltas: 0, total: 0 });
+  const [justPendentes, setJustPendentes] = useState(0);
+  const [escolasStats, setEscolasStats] = useState<EscolaStats[]>([]);
+  const [recentAccess, setRecentAccess] = useState<AlunoRecente[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await db.stats.counts();
-      if (data) setStats(data);
+      try {
+        // Global counts
+        const { data: counts } = await db.stats.counts();
+        if (counts) setStats(counts);
+
+        // Escolas list
+        const { data: escolas } = await db.escolas.list();
+        const escolaList = (escolas || []) as any[];
+
+        // Per-escola frequency stats for today
+        const escolaStatsArr: EscolaStats[] = [];
+        let totalPresentes = 0, totalAtrasados = 0, totalAlunos = 0;
+
+        for (const escola of escolaList) {
+          const { data: freqCount } = await db.frequencias.countByEscola(escola.id, today);
+          const { data: alunoCount } = await db.alunos.countByEscola(escola.id);
+          const fc = freqCount as any || { total: 0, presentes: 0 };
+          const total = Number(alunoCount) || 0;
+          const presentes = fc.presentes || 0;
+          totalPresentes += presentes;
+          totalAtrasados += (fc.total - presentes > 0 ? fc.total - presentes : 0);
+          totalAlunos += total;
+          escolaStatsArr.push({
+            id: escola.id,
+            nome: escola.nome,
+            totalAlunos: total,
+            presentes,
+            freqPct: total > 0 ? Math.round((presentes / total) * 100) : 0,
+          });
+        }
+
+        setEscolasStats(escolaStatsArr.sort((a, b) => b.freqPct - a.freqPct));
+        setFreqHoje({
+          presentes: totalPresentes,
+          atrasados: totalAtrasados,
+          faltas: Math.max(0, totalAlunos - totalPresentes - totalAtrasados),
+          total: totalAlunos,
+        });
+
+        // Pending justificativas
+        const { data: justs } = await db.justificativas.list();
+        const pendentes = ((justs || []) as any[]).filter(j => j.status === 'pendente').length;
+        setJustPendentes(pendentes);
+
+        // Recent access today (from frequencias)
+        const { data: freqAll } = await db.frequencias.listAll();
+        const todayFreqs = ((freqAll || []) as any[])
+          .filter(f => f.data === today && f.hora_entrada)
+          .sort((a, b) => (b.hora_entrada || '').localeCompare(a.hora_entrada || ''))
+          .slice(0, 6);
+
+        if (todayFreqs.length > 0) {
+          const { data: allAlunos } = await db.alunos.list();
+          const alunosMap = new Map(((allAlunos || []) as any[]).map(a => [a.id, a]));
+          const recentCards: AlunoRecente[] = todayFreqs.map(f => {
+            const a = alunosMap.get(f.aluno_id) as any;
+            return {
+              id: f.id,
+              nome: a?.nome_completo ?? '—',
+              matricula: a?.matricula ?? '—',
+              avatarUrl: a?.avatar_url ?? null,
+              horaEntrada: f.hora_entrada,
+              status: f.status,
+              escolaNome: a?.escola_nome ?? '',
+            };
+          });
+          setRecentAccess(recentCards);
+        }
+      } catch (e) {
+        console.error('Dashboard load error:', e);
+      } finally {
+        setLoading(false);
+      }
     };
     load();
   }, []);
 
+  const freqGlobalPct = freqHoje.total > 0
+    ? Math.round(((freqHoje.presentes + freqHoje.atrasados) / freqHoje.total) * 100)
+    : 0;
+
+  const statusCfg: Record<string, { label: string; cls: string }> = {
+    presente:  { label: 'Presente',  cls: 'bg-emerald-500/15 text-emerald-700 border-emerald-200' },
+    atrasado:  { label: 'Atrasado',  cls: 'bg-amber-500/15 text-amber-700 border-amber-200'       },
+    falta:     { label: 'Falta',     cls: 'bg-destructive/15 text-destructive border-destructive/20' },
+    justificada: { label: 'Justificada', cls: 'bg-blue-500/15 text-blue-700 border-blue-200'      },
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <div className="mb-6">
+    <div className="space-y-6">
+      {/* Greeting */}
+      <div>
         <h1 className="text-xl font-bold tracking-tight">
           Olá, {perfil?.nome?.split(' ')[0]} 👋
         </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Bem-vindo ao painel de gestão</p>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Painel de gestão — {todayLabel}
+        </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <StatCard title="Escolas" value={stats.escolas} icon={School} color="primary" />
-        <StatCard title="Alunos Ativos" value={stats.alunos} icon={Users} color="success" />
-        <StatCard title="Professores" value={stats.professores} icon={GraduationCap} color="warning" />
-        <StatCard title="Diretores" value={stats.diretores} icon={UserCog} />
+      {/* Top stats */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Escolas"       value={stats.escolas}    icon={School}       color="primary"  />
+        <StatCard title="Alunos Ativos" value={stats.alunos}     icon={Users}        color="success"  />
+        <StatCard title="Professores"   value={stats.professores} icon={GraduationCap} color="warning" />
+        <StatCard title="Diretores"     value={stats.diretores}  icon={UserCog}       color="info"    />
       </div>
 
-      <Card>
-        <CardContent className="py-12 text-center text-muted-foreground">
-          <BarChart3 className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm">Os gráficos de frequência serão exibidos aqui com dados em tempo real.</p>
-        </CardContent>
-      </Card>
+      {/* Frequency today summary */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="lg:col-span-1">
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="h-11 w-11 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+              <TrendingUp className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Freq. Global Hoje</p>
+              <p className="text-2xl font-bold tabular-nums">{freqGlobalPct}%</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="h-11 w-11 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Presentes</p>
+              <p className="text-2xl font-bold tabular-nums">{freqHoje.presentes}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="h-11 w-11 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+              <Clock className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Atrasados</p>
+              <p className="text-2xl font-bold tabular-nums">{freqHoje.atrasados}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="h-11 w-11 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
+              <TrendingDown className="h-5 w-5 text-destructive" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Faltas</p>
+              <p className="text-2xl font-bold tabular-nums text-destructive">{freqHoje.faltas}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Frequência por escola */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2 flex-row items-center justify-between">
+            <CardTitle className="text-base">Frequência por Escola — Hoje</CardTitle>
+            <Link to="/escolas" className="text-xs text-primary flex items-center gap-1 hover:underline">
+              Ver todas <ArrowRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {escolasStats.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhuma escola cadastrada.</p>
+            ) : (
+              escolasStats.map(escola => (
+                <div key={escola.id}>
+                  <div className="flex items-center justify-between mb-1">
+                    <Link to={`/escolas/${escola.id}`} className="text-sm font-medium hover:text-primary transition-colors truncate max-w-[60%]">
+                      {escola.nome}
+                    </Link>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+                      <span>{escola.presentes}/{escola.totalAlunos} alunos</span>
+                      <span className={`font-semibold ${
+                        escola.freqPct >= 85 ? 'text-emerald-600' :
+                        escola.freqPct >= 70 ? 'text-amber-600' : 'text-destructive'
+                      }`}>{escola.freqPct}%</span>
+                    </div>
+                  </div>
+                  <Progress
+                    value={escola.freqPct}
+                    className={`h-2 ${
+                      escola.freqPct >= 85 ? '[&>div]:bg-emerald-500' :
+                      escola.freqPct >= 70 ? '[&>div]:bg-amber-500'   : '[&>div]:bg-destructive'
+                    }`}
+                  />
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Alertas / Ações rápidas */}
+        <div className="space-y-4">
+          {/* Justificativas pendentes */}
+          <Card className={justPendentes > 0 ? 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20' : ''}>
+            <CardContent className="p-5 flex items-center gap-4">
+              <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 ${
+                justPendentes > 0 ? 'bg-amber-500/10' : 'bg-muted'
+              }`}>
+                <FileText className={`h-5 w-5 ${justPendentes > 0 ? 'text-amber-600' : 'text-muted-foreground'}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-muted-foreground">Justificativas</p>
+                <p className="text-2xl font-bold tabular-nums">{justPendentes}</p>
+                <p className="text-xs text-muted-foreground">pendentes de análise</p>
+              </div>
+              {justPendentes > 0 && (
+                <Link to="/justificativas">
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                </Link>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Alunos sem biometria (sem avatar_url) */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Ações Rápidas</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Link to="/iot-config" className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors">
+                <span>Importar Fotos dos Alunos</span>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+              <Link to="/frequencia" className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors">
+                <span>Chamada do Dia (Tempo Real)</span>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+              <Link to="/alunos" className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors">
+                <span>Gerenciar Alunos</span>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+              <Link to="/justificativas" className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors">
+                <span>Analisar Justificativas</span>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Acessos recentes de hoje */}
+      {recentAccess.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3 flex-row items-center justify-between">
+            <CardTitle className="text-base">Últimos Acessos Hoje</CardTitle>
+            <Link to="/frequencia" className="text-xs text-primary flex items-center gap-1 hover:underline">
+              Tempo real <ArrowRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {recentAccess.map(a => {
+                const sc = statusCfg[a.status] ?? statusCfg.falta;
+                return (
+                  <div key={a.id} className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
+                    <Avatar className="h-9 w-9 shrink-0">
+                      <AvatarImage src={a.avatarUrl || ''} className="object-cover" />
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                        {a.nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{a.nome}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Badge variant="outline" className={`text-[10px] px-1 py-0 ${sc.cls}`}>{sc.label}</Badge>
+                        {a.horaEntrada && <span className="text-[10px] text-muted-foreground font-mono">{a.horaEntrada}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

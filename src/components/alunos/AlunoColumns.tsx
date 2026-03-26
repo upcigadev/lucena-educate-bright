@@ -12,6 +12,7 @@ export interface AlunoRow {
   ativo: boolean;
   data_nascimento: string | null;
   responsavel_id: string | null;
+  avatar_url?: string | null;
   turma_nome?: string;
   serie_nome?: string;
   escola_nome?: string;
@@ -38,7 +39,7 @@ export function getAlunoColumns(): Column<AlunoRow>[] {
       sortable: false,
       render: (r) => (
         <Avatar className="h-9 w-9">
-          <AvatarImage src="" />
+          <AvatarImage src={r.avatar_url || ''} />
           <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
             {r.nome_completo.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
           </AvatarFallback>

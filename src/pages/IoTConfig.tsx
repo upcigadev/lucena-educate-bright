@@ -5,9 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Wifi, WifiOff, RefreshCw, Send, MonitorSmartphone } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, Send, MonitorSmartphone, ImageIcon } from 'lucide-react';
 import { db } from '@/lib/mock-db';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -20,6 +21,10 @@ export default function IoTConfig() {
   const [ip, setIp] = useState('');
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [syncing, setSyncing] = useState(false);
+
+  // Photo sync state
+  const [syncingPhotos, setSyncingPhotos] = useState(false);
+  const [photoProgress, setPhotoProgress] = useState<{ current: number; total: number; fetched: number; failed: number } | null>(null);
 
   useEffect(() => {
     db.escolas.list().then(res => {
@@ -117,6 +122,85 @@ export default function IoTConfig() {
     }
   };
 
+  /**
+   * Busca as fotos de todos os alunos cadastrados no equipamento e salva
+   * como avatar_url no SQLite local. Faz requisições sequenciais para não
+   * sobrecarregar o hardware.
+   */
+  const handleSyncPhotos = async () => {
+    if (status !== 'connected') { toast.error('Conecte-se ao terminal antes de sincronizar fotos.'); return; }
+    if (!ip.trim()) { toast.error('Configure o IP do equipamento.'); return; }
+    if (!escolaId) { toast.error('Selecione uma escola.'); return; }
+
+    setSyncingPhotos(true);
+    setPhotoProgress(null);
+
+    try {
+      // Busca todos os alunos da escola que possuem idface_user_id OU matricula
+      const { data: alunos } = await db.alunos.listByEscola(escolaId);
+      const candidates = (alunos || []).filter((a: any) => a?.matricula != null);
+
+      if (candidates.length === 0) {
+        toast.info('Nenhum aluno encontrado para buscar fotos.');
+        setSyncingPhotos(false);
+        return;
+      }
+
+      // Monta a lista para o backend: prefere idface_user_id, fallback para matricula
+      const users = candidates.map((a: any) => ({
+        matricula: String(a.matricula),
+        internalUserId: a.idface_user_id ?? a.matricula,
+      }));
+
+      setPhotoProgress({ current: 0, total: users.length, fetched: 0, failed: 0 });
+      toast.info(`Buscando fotos de ${users.length} alunos no equipamento…`);
+
+      // Chama o endpoint de sincronização em lote (sequencial no backend)
+      const response = await fetch('http://localhost:3000/api/sync-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip, users }),
+      });
+
+      if (!response.ok) throw new Error('Falha na comunicação com o servidor local.');
+      const payload = await response.json();
+      if (!payload?.success) throw new Error(payload?.error || 'Erro ao buscar imagens.');
+
+      const results: { matricula: string; image: string | null }[] = payload.data?.results ?? [];
+      let saved = 0;
+      let skipped = 0;
+
+      // Salva cada foto recebida no SQLite
+      for (let i = 0; i < results.length; i++) {
+        const { matricula, image } = results[i];
+        setPhotoProgress({
+          current: i + 1,
+          total: results.length,
+          fetched: payload.data.fetched,
+          failed: payload.data.failed,
+        });
+
+        if (!image) { skipped++; continue; }
+
+        // Encontra o aluno pelo matricula para obter o id do banco
+        const aluno = candidates.find((a: any) => String(a.matricula) === String(matricula));
+        if (aluno?.id) {
+          await db.alunos.update(aluno.id, { avatar_url: image });
+          saved++;
+        }
+      }
+
+      toast.success(`Fotos sincronizadas! ${saved} salvas, ${skipped} sem foto no equipamento.`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Falha ao sincronizar fotos: ${err.message}`);
+    } finally {
+      setSyncingPhotos(false);
+      // Mantém o progresso visível por 3s depois
+      setTimeout(() => setPhotoProgress(null), 3000);
+    }
+  };
+
   const statusCfg: Record<ConnectionStatus, { label: string; variant: 'default' | 'secondary' | 'destructive'; icon: React.ElementType }> = {
     idle: { label: 'Aguardando', variant: 'secondary', icon: WifiOff },
     testing: { label: 'Testando...', variant: 'secondary', icon: RefreshCw },
@@ -125,6 +209,9 @@ export default function IoTConfig() {
   };
 
   const currentStatus = statusCfg[status];
+  const photoProgressPct = photoProgress
+    ? Math.round((photoProgress.current / photoProgress.total) * 100)
+    : 0;
 
   return (
     <div>
@@ -176,6 +263,38 @@ export default function IoTConfig() {
                 Sincronizar Alunos com o Aparelho
               </Button>
             </div>
+
+            {/* ── Sync Photos ─────────────────────────────────────────── */}
+            <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Importar Fotos do Equipamento</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Busca a foto biométrica cadastrada de cada aluno no iDFace e salva localmente para exibição na tabela. Operação sequencial — não sobrecarrega o hardware.
+                </p>
+              </div>
+
+              {photoProgress && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Buscando {photoProgress.current}/{photoProgress.total}</span>
+                    <span>{photoProgress.fetched} obtidas · {photoProgress.failed} falhas</span>
+                  </div>
+                  <Progress value={photoProgressPct} className="h-2" />
+                </div>
+              )}
+
+              <Button
+                variant="outline"
+                onClick={handleSyncPhotos}
+                disabled={status !== 'connected' || syncingPhotos}
+                className="w-full gap-2"
+              >
+                {syncingPhotos
+                  ? <RefreshCw className="h-4 w-4 animate-spin" />
+                  : <ImageIcon className="h-4 w-4" />}
+                {syncingPhotos ? 'Importando fotos…' : 'Importar Fotos dos Alunos'}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -185,10 +304,15 @@ export default function IoTConfig() {
             <CardDescription className="text-xs">Configure este endpoint no painel do Control iD para receber eventos de presença.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg bg-muted/50 p-3">
-              <code className="text-xs break-all text-muted-foreground">
-                TODO: Configure seu endpoint de webhook aqui
-              </code>
+            <div className="rounded-lg bg-muted/50 p-3 space-y-2">
+              <div>
+                <p className="text-[11px] text-muted-foreground mb-1">Notificações DAO (logs de acesso):</p>
+                <code className="text-xs break-all text-foreground font-mono">http://&lt;IP-DO-PC&gt;:3000/dao</code>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground mb-1">Foto de acesso (imagem biométrica):</p>
+                <code className="text-xs break-all text-foreground font-mono">http://&lt;IP-DO-PC&gt;:3000/access_photo?user_id={`{user_id}`}</code>
+              </div>
             </div>
           </CardContent>
         </Card>

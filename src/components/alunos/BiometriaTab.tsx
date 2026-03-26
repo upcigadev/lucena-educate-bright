@@ -164,24 +164,26 @@ export function BiometriaTab({ aluno }: BiometriaTabProps) {
           <Separator />
 
           {/* Device illustration area */}
-          <div className="relative aspect-[16/9] w-full rounded-xl bg-muted/50 flex flex-col items-center justify-center gap-4 border border-border">
-            <div className="h-16 w-16 rounded-2xl bg-primary/5 border-2 border-dashed border-primary/20 overflow-hidden flex items-center justify-center">
-              {fotoRecente ? (
-                <img
-                  src={`data:image/jpeg;base64,${fotoRecente}`}
-                  alt="Foto recente do aparelho"
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <Monitor className="h-8 w-8 text-primary/40" />
-              )}
-            </div>
-            <div className="text-center space-y-1">
-              <p className="text-sm font-medium text-foreground">Terminal de Reconhecimento Facial</p>
-              <p className="text-xs text-muted-foreground max-w-[260px]">
-                Posicione o aluno em frente ao terminal de reconhecimento facial instalado na parede.
-              </p>
-            </div>
+          <div className="relative aspect-[16/9] w-full rounded-xl bg-muted/50 flex flex-col items-center justify-center overflow-hidden border border-border">
+            {fotoRecente ? (
+              <img
+                src={fotoRecente.includes('data:image') ? fotoRecente : `data:image/jpeg;base64,${fotoRecente}`}
+                alt="Face Capturada"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <>
+                <div className="h-16 w-16 rounded-2xl bg-primary/5 border-2 border-dashed border-primary/20 flex items-center justify-center mb-4">
+                  <Monitor className="h-8 w-8 text-primary/40" />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-medium text-foreground">Terminal de Reconhecimento Facial</p>
+                  <p className="text-xs text-muted-foreground max-w-[260px]">
+                    Posicione o aluno em frente ao terminal de reconhecimento facial instalado na parede.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Connection info */}

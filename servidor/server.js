@@ -31,6 +31,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 function jsonError(res, status, message) {
   return res.status(status).json({ success: false, error: message });
@@ -123,6 +124,53 @@ app.post('/api/sync-users', async (req, res) => {
   }
 });
 
+// Busca a imagem de um único usuário no equipamento
+app.post('/api/get-image', async (req, res) => {
+  const { ip, internalUserId } = req.body || {};
+  if (!ip || internalUserId == null) {
+    return jsonError(res, 400, 'Informe ip e internalUserId no corpo da requisição.');
+  }
+  try {
+    const result = await deviceService.getUserImage(ip, String(internalUserId));
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Get image error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Busca imagens de múltiplos usuários de forma sequencial (sem sobrecarregar o hardware)
+// Body: { ip, users: [{ matricula, internalUserId }] }
+// Retorna: [{ matricula, image: 'data:image/jpeg;base64,...' | null }]
+app.post('/api/sync-images', async (req, res) => {
+  const { ip, users } = req.body || {};
+  if (!ip || !Array.isArray(users)) {
+    return jsonError(res, 400, 'Informe ip e users (array de { matricula, internalUserId }) no corpo.');
+  }
+
+  const results = [];
+  let fetched = 0;
+  let failed = 0;
+
+  for (const u of users) {
+    try {
+      if (u?.internalUserId == null) {
+        results.push({ matricula: u?.matricula ?? null, image: null });
+        continue;
+      }
+      const imgResult = await deviceService.getUserImage(ip, String(u.internalUserId));
+      results.push({ matricula: u.matricula, image: imgResult.image });
+      fetched += 1;
+    } catch (e) {
+      results.push({ matricula: u?.matricula ?? null, image: null });
+      failed += 1;
+    }
+  }
+
+  console.log(`[sync-images] Concluído: ${fetched} imagens obtidas, ${failed} falhas.`);
+  return res.json({ success: true, data: { results, fetched, failed } });
+});
+
 // Webhooks do aparelho (mesma lógica do servidor anterior; emite via Socket.IO)
 app.use((req, res) => {
   const rota = req.path;
@@ -138,26 +186,59 @@ app.use((req, res) => {
       req.body.object_changes[0] &&
       req.body.object_changes[0].object === 'access_logs'
     ) {
+      // Normaliza `values` — pode ser objeto único ou array dependendo do firmware.
+      const rawValues = req.body.object_changes[0].values;
+      const valuesArray = Array.isArray(rawValues) ? rawValues : rawValues ? [rawValues] : [];
+
       console.log('\n[Webhook Server] 📝 Log de Acesso Recebido!');
-      console.log(JSON.stringify(req.body.object_changes[0].values, null, 2));
-      io.emit('device:accessLog', {
-        type: 'log',
-        data: req.body.object_changes[0].values,
-      });
+      console.log(JSON.stringify(valuesArray, null, 2));
+
+      if (valuesArray.length > 0) {
+        io.emit('device:accessLog', {
+          type: 'log',
+          data: valuesArray, // sempre array
+        });
+      }
     }
     return res.status(200).json({ status: 'success' });
   }
 
   if (rota.includes('access_photo')) {
     console.log('\n[Webhook Server] 📸 Foto Biométrica Recebida!');
-    if (req.body) {
-      io.emit('device:accessLog', { type: 'photo', data: req.body });
+
+    // O aparelho da Control iD envia o ID do usuário na URL (query string)
+    const userId = String(req.query.user_id || '');
+
+    let base64Image = null;
+
+    if (Buffer.isBuffer(req.body)) {
+      // Corpo binário bruto (sem parser)
+      base64Image = req.body.toString('base64');
+    } else if (typeof req.body === 'string' && req.body.length > 0) {
+      // Express converteu para string
+      base64Image = Buffer.from(req.body, 'binary').toString('base64');
+    } else if (req.body instanceof Uint8Array || (req.body && req.body.type === 'Buffer')) {
+      base64Image = Buffer.from(req.body.data ?? req.body).toString('base64');
     }
+
+    if (base64Image) {
+      const dataUri = `data:image/jpeg;base64,${base64Image}`;
+      console.log(`[Webhook Server] Emitindo foto para userId=${userId} (${dataUri.length} chars)`);
+      io.emit('device:accessLog', {
+        type: 'photo',
+        userId,
+        data: dataUri,
+      });
+    } else {
+      console.warn('[Webhook Server] ⚠️  Corpo da foto não reconhecido:', typeof req.body, req.body ? req.body.constructor?.name : 'null');
+    }
+
     return res.status(200).json({ status: 'success' });
   }
 
   return res.status(200).json({ status: 'success' });
 });
+
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(

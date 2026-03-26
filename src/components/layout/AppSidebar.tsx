@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   School, Users, GraduationCap, BookOpen, UserCheck, UserCog,
-  LayoutDashboard, ClipboardList, Baby, X, ChevronLeft, ChevronRight, Wifi
+  LayoutDashboard, ClipboardList, Baby, X, ChevronLeft, ChevronRight, Wifi, Radio
 } from 'lucide-react';
 import { useAuthStore, type Papel } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Professores', href: '/professores', icon: GraduationCap },
     { label: 'Alunos', href: '/alunos', icon: Users },
     { label: 'Responsáveis', href: '/responsaveis', icon: Baby },
+    { label: 'Chamada do Dia', href: '/frequencia', icon: Radio },
     { label: 'Config. IoT', href: '/iot-config', icon: Wifi },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
   ],
@@ -28,6 +29,7 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Séries e Turmas', href: '/series', icon: BookOpen },
     { label: 'Alunos', href: '/alunos', icon: Users },
+    { label: 'Chamada do Dia', href: '/frequencia', icon: Radio },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
   ],
   PROFESSOR: [
