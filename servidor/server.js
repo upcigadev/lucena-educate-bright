@@ -124,6 +124,22 @@ app.post('/api/sync-users', async (req, res) => {
   }
 });
 
+// Remove um usuário do equipamento Control iD (chamado ao inativar um aluno)
+app.post('/api/delete-user', async (req, res) => {
+  const { ip, internalUserId } = req.body || {};
+  if (!ip || internalUserId == null) {
+    return jsonError(res, 400, 'Informe ip e internalUserId.');
+  }
+  try {
+    await deviceService.deleteUser(ip, String(internalUserId));
+    console.log(`[deviceService] Usuário ${internalUserId} removido do equipamento.`);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Busca a imagem de um único usuário no equipamento
 app.post('/api/get-image', async (req, res) => {
   const { ip, internalUserId } = req.body || {};

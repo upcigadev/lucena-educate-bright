@@ -11,6 +11,7 @@ import { maskCPF, cpfMask, validateCPF } from '@/lib/cpf';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { criarUsuario } from '@/lib/criar-usuario';
+import { Trash2 } from 'lucide-react';
 
 interface ProfRow { id: string; usuario_id: string; nome: string; cpf: string; escolas: string[]; }
 
@@ -65,11 +66,23 @@ export default function Professores() {
     load();
   };
 
+  const deactivate = async (row: ProfRow) => {
+    if (!window.confirm(`Inativar professor ${row.nome}?`)) return;
+    await db.professores.deactivate(row.id);
+    toast.success(`${row.nome} inativado.`);
+    load();
+  };
+
   const columns: Column<ProfRow>[] = [
     { key: 'nome', header: 'Nome' },
     { key: 'cpf', header: 'CPF', render: r => maskCPF(r.cpf) },
     { key: 'escolas', header: 'Escolas', render: r => (
       <div className="flex flex-wrap gap-1">{r.escolas.map((e, i) => <Badge key={i} variant="secondary" className="text-xs">{e}</Badge>)}</div>
+    )},
+    { key: 'delete_action', header: '', sortable: false, render: r => (
+      <button onClick={(e) => { e.stopPropagation(); deactivate(r); }} className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Inativar">
+        <Trash2 className="h-4 w-4" />
+      </button>
     )},
   ];
 

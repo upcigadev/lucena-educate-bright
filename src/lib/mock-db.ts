@@ -93,6 +93,7 @@ export const db = {
         LEFT JOIN turmas t ON a.turma_id = t.id
         LEFT JOIN series s ON t.serie_id = s.id
         LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE a.ativo = 1
         ORDER BY a.nome_completo
       `);
       return ok(rows);
@@ -110,6 +111,29 @@ export const db = {
       return ok(rows[0]?.c || 0);
     },
     insert: async (data: { nome_completo: string; matricula: string; data_nascimento?: string | null; escola_id: string; turma_id?: string | null; horario_inicio?: string | null; horario_fim?: string | null; limite_max?: string | null; idface_user_id?: string | null; avatar_url?: string | null }) => {
+      // Upsert: se já existir um aluno com essa matrícula (mesmo inativo), reativa e atualiza.
+      const existing = await query<{ id: string }>('SELECT id FROM alunos WHERE matricula = ? LIMIT 1', [data.matricula]);
+      if (existing.length > 0) {
+        const id = existing[0].id;
+        await run(
+          `UPDATE alunos SET nome_completo=?, data_nascimento=?, escola_id=?, turma_id=?,
+           horario_inicio=?, horario_fim=?, limite_max=?, idface_user_id=?, avatar_url=?, ativo=1
+           WHERE id=?`,
+          [
+            data.nome_completo,
+            data.data_nascimento || null,
+            data.escola_id,
+            data.turma_id || null,
+            data.horario_inicio || null,
+            data.horario_fim || null,
+            data.limite_max || null,
+            data.idface_user_id || null,
+            data.avatar_url || null,
+            id,
+          ]
+        );
+        return ok({ id });
+      }
       const id = generateId();
       await run(
         'INSERT INTO alunos (id, nome_completo, matricula, data_nascimento, escola_id, turma_id, horario_inicio, horario_fim, limite_max, idface_user_id, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -154,6 +178,11 @@ export const db = {
       );
       return ok(rows[0] || null);
     },
+    // Soft-delete: seta ativo = 0. Nunca deleta fisicamente.
+    deactivate: async (id: string) => {
+      await run('UPDATE alunos SET ativo = 0 WHERE id = ?', [id]);
+      return ok(null);
+    },
   },
 
   usuarios: {
@@ -183,6 +212,11 @@ export const db = {
       }
       return ok(null);
     },
+    // Soft-delete: inativa o usuário sem remover do banco
+    deactivate: async (id: string) => {
+      await run("UPDATE usuarios SET ativo = 0 WHERE id = ?", [id]);
+      return ok(null);
+    },
   },
 
   diretores: {
@@ -190,7 +224,7 @@ export const db = {
       const rows = await query(`
         SELECT d.*, u.nome, u.cpf, e.nome as escola_nome
         FROM diretores d
-        JOIN usuarios u ON d.usuario_id = u.id
+        JOIN usuarios u ON d.usuario_id = u.id AND u.ativo = 1
         JOIN escolas e ON d.escola_id = e.id
         ORDER BY u.nome
       `);
@@ -204,6 +238,14 @@ export const db = {
     update: async (id: string, data: { escola_id?: string }) => {
       if (data.escola_id) {
         await run('UPDATE diretores SET escola_id = ? WHERE id = ?', [data.escola_id, id]);
+      }
+      return ok(null);
+    },
+    // Soft-delete: inativa o usuário vinculado
+    deactivate: async (diretorId: string) => {
+      const rows = await query<{ usuario_id: string }>('SELECT usuario_id FROM diretores WHERE id = ?', [diretorId]);
+      if (rows[0]?.usuario_id) {
+        await run('UPDATE usuarios SET ativo = 0 WHERE id = ?', [rows[0].usuario_id]);
       }
       return ok(null);
     },
@@ -229,10 +271,9 @@ export const db = {
       const rows = await query(`
         SELECT p.id, p.usuario_id, u.nome, u.cpf
         FROM professores p
-        JOIN usuarios u ON p.usuario_id = u.id
+        JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
         ORDER BY u.nome
       `);
-      // For each professor, get their schools
       const result = [];
       for (const prof of rows) {
         const escolas = await query(`
@@ -246,6 +287,14 @@ export const db = {
       const id = generateId();
       await run('INSERT INTO professores (id, usuario_id) VALUES (?, ?)', [id, data.usuario_id]);
       return ok({ id });
+    },
+    // Soft-delete: inativa o usuário vinculado
+    deactivate: async (professorId: string) => {
+      const rows = await query<{ usuario_id: string }>('SELECT usuario_id FROM professores WHERE id = ?', [professorId]);
+      if (rows[0]?.usuario_id) {
+        await run('UPDATE usuarios SET ativo = 0 WHERE id = ?', [rows[0].usuario_id]);
+      }
+      return ok(null);
     },
   },
 
@@ -319,6 +368,25 @@ export const db = {
         [id, data.aluno_id, data.responsavel_id, data.parentesco || 'Responsavel']);
       return ok({ id });
     },
+    // Lista todos os responsáveis vinculados a um aluno com dados completos
+    listByAluno: async (alunoId: string) => {
+      const rows = await query(`
+        SELECT ar.id as vinculo_id, ar.parentesco,
+               r.id as responsavel_id, r.telefone,
+               u.nome, u.cpf
+        FROM aluno_responsaveis ar
+        JOIN responsaveis r ON ar.responsavel_id = r.id
+        JOIN usuarios u ON r.usuario_id = u.id
+        WHERE ar.aluno_id = ?
+        ORDER BY u.nome
+      `, [alunoId]);
+      return ok(rows);
+    },
+    // Remove o vínculo (não remove o responsável do banco)
+    delete: async (vinculoId: string) => {
+      await run('DELETE FROM aluno_responsaveis WHERE id = ?', [vinculoId]);
+      return ok(null);
+    },
   },
 
   frequencias: {
@@ -362,6 +430,21 @@ export const db = {
       await run('INSERT INTO frequencias (id, aluno_id, turma_id, data, hora_entrada, status, motivo, dispositivo_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [id, data.aluno_id, data.turma_id || null, data.data, data.hora_entrada || null, data.status || 'falta', data.motivo || null, data.dispositivo_id || null]);
       return ok({ id });
+    },
+    // Calcula o percentual de presenças do aluno no mês atual
+    // Considera presente + atrasado como presença; falta e justificada como ausência.
+    monthlyPct: async (alunoId: string) => {
+      const rows = await query<{ total: number; presentes: number }>(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN status IN ('presente', 'atrasado') THEN 1 ELSE 0 END) as presentes
+        FROM frequencias
+        WHERE aluno_id = ?
+          AND strftime('%Y-%m', data) = strftime('%Y-%m', 'now')
+      `, [alunoId]);
+      const { total, presentes } = rows[0] || { total: 0, presentes: 0 };
+      if (!total) return ok(null); // Sem registros = null (não exibe barra falsa)
+      return ok(Math.round((presentes / total) * 100));
     },
   },
 

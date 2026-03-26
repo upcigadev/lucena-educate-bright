@@ -13,6 +13,7 @@ export interface AlunoRow {
   data_nascimento: string | null;
   responsavel_id: string | null;
   avatar_url?: string | null;
+  idface_user_id?: string | null;
   turma_nome?: string;
   serie_nome?: string;
   escola_nome?: string;
@@ -81,7 +82,10 @@ export function getAlunoColumns(): Column<AlunoRow>[] {
       key: 'frequencia_pct',
       header: 'Frequência',
       render: (r) => {
-        const pct = r.frequencia_pct ?? Math.floor(Math.random() * 30 + 70); // mock
+        const pct = r.frequencia_pct;
+        if (pct == null) {
+          return <span className="text-sm text-muted-foreground">—</span>;
+        }
         return (
           <div className="flex items-center gap-2 min-w-[120px]">
             <span className={`text-sm font-semibold ${getFreqColor(pct)}`}>{pct}%</span>

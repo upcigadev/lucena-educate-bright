@@ -2,6 +2,43 @@ const axios = require('axios');
 
 let sessionToken = null;
 
+/**
+ * Converte uma hora no formato "HH:MM" para Unix epoch (segundos inteiros).
+ * O Control iD exige int para begin_time / end_time.
+ *
+ * Para begin_time: usa a data de hoje + HH:MM (horário de Brasília, UTC-3).
+ * Para end_time:   usa uma data distante (2099-12-31) como "sem vencimento".
+ *
+ * Se o valor já for um número (ou string numérica), retorna como número.
+ * Se não souber converter, retorna null (campo não é enviado).
+ */
+function parseTimeField(val, role = 'begin') {
+  if (val == null || val === '') return null;
+  // Já é número? retorna como int
+  if (typeof val === 'number') return Math.floor(val);
+  if (typeof val === 'string' && /^\d+$/.test(val.trim())) return parseInt(val.trim());
+
+  // Formato "HH:MM" ou "HH:MM:SS"
+  const match = String(val).match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+
+  const hh = parseInt(match[1]);
+  const mm = parseInt(match[2]);
+
+  if (role === 'end') {
+    // Sem vencimento: usa 2037-12-31 (int32 max é ~2038-01-19, então 2037 é seguro).
+    // 2099 gera ~4.1 bilhões que ultrapassa int32 e o iDFace rejeita com "got uint64".
+    const far = new Date('2037-12-31T00:00:00-03:00');
+    far.setHours(hh, mm, 0, 0);
+    return Math.floor(far.getTime() / 1000);
+  }
+
+  // begin: data de hoje + hora
+  const d = new Date();
+  d.setHours(hh, mm, 0, 0);
+  return Math.floor(d.getTime() / 1000);
+}
+
 async function login(ip) {
   try {
     const response = await axios.post(`http://${ip}/login.fcgi`, {
@@ -95,8 +132,8 @@ async function registerUser(ip, userData) {
       // Se falhar ao listar usuários, seguimos para criação para não travar o fluxo.
     }
 
-    const beginTime = userData.begin_time ?? userData.beginTime ?? null;
-    const endTime = userData.end_time ?? userData.endTime ?? null;
+    const beginTime = parseTimeField(userData.begin_time ?? userData.beginTime ?? null, 'begin');
+    const endTime   = parseTimeField(userData.end_time   ?? userData.endTime   ?? null, 'end');
 
     if (matchedInternalId != null) {
       await updateUser(ip, matchedInternalId, userData.name, userData.id, beginTime, endTime);
@@ -109,7 +146,7 @@ async function registerUser(ip, userData) {
       registration: userData.id,
     };
     if (beginTime != null) createValues.begin_time = beginTime;
-    if (endTime != null) createValues.end_time = endTime;
+    if (endTime   != null) createValues.end_time   = endTime;
 
     const response = await axios.post(`http://${ip}/create_objects.fcgi?session=${sessionToken}`, {
       object: 'users',

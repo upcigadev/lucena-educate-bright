@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { maskCPF, cpfMask, validateCPF } from '@/lib/cpf';
 import { criarUsuario } from '@/lib/criar-usuario';
+import { Trash2 } from 'lucide-react';
 
 interface DiretorRow {
   id: string;
@@ -58,10 +59,22 @@ export default function Diretores() {
     load();
   };
 
+  const deactivate = async (row: DiretorRow) => {
+    if (!window.confirm(`Inativar diretor ${row.nome}?`)) return;
+    await db.diretores.deactivate(row.id);
+    toast.success(`${row.nome} inativado.`);
+    load();
+  };
+
   const columns: Column<DiretorRow>[] = [
     { key: 'nome', header: 'Nome' },
     { key: 'cpf', header: 'CPF', render: (r) => maskCPF(r.cpf) },
     { key: 'escola_nome', header: 'Escola' },
+    { key: 'delete_action', header: '', sortable: false, render: r => (
+      <button onClick={(e) => { e.stopPropagation(); deactivate(r); }} className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Inativar">
+        <Trash2 className="h-4 w-4" />
+      </button>
+    )},
   ];
 
   return (

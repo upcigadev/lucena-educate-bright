@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { type AlunoRow, getAlunoColumns } from '@/components/alunos/AlunoColumns';
 import { ResponsavelTab } from '@/components/alunos/ResponsavelTab';
 import { BiometriaTab } from '@/components/alunos/BiometriaTab';
+import { Trash2 } from 'lucide-react';
 
 interface Serie { id: string; nome: string; escola_id: string; horario_inicio: string | null; tolerancia_min: number | null; limite_max: string | null; }
 interface Turma { id: string; nome: string; serie_id: string; escola_id: string; horario_inicio: string | null; tolerancia_min: number | null; limite_max: string | null; }
@@ -52,13 +53,22 @@ export default function Alunos() {
 
   const load = async () => {
     const { data } = await db.alunos.list();
-    setAlunos((data as AlunoRow[]) || []);
+    const rows = (data as AlunoRow[]) || [];
+
+    // Calcula a frequência real do mês atual para cada aluno
+    const withFreq: AlunoRow[] = await Promise.all(
+      rows.map(async (a) => {
+        const { data: pct } = await db.frequencias.monthlyPct(a.id);
+        return { ...a, frequencia_pct: pct ?? undefined };
+      })
+    );
+    setAlunos(withFreq);
+
     const { data: t } = await db.turmas.listAll();
     setTurmas((t as Turma[]) || []);
     const { data: e } = await db.escolas.list();
     setEscolas(((e || []) as any[]).map(x => ({ id: x.id, nome: x.nome })));
 
-    // Load all series from all escolas
     const allSeries: Serie[] = [];
     for (const escola of (e || []) as any[]) {
       const { data: s } = await db.series.listByEscola(escola.id);
@@ -128,7 +138,7 @@ export default function Alunos() {
         horario_fim,
         limite_max,
       });
-      const alunoId = inserted.id;
+      const alunoId = inserted.data?.id;
       toast.success('Aluno cadastrado.');
 
       // Sync with the biometric device without blocking UI flow if offline
@@ -166,10 +176,53 @@ export default function Alunos() {
     load();
   };
 
+  const deactivate = async (aluno: AlunoRow) => {
+    if (!window.confirm(`Inativar ${aluno.nome_completo}? Esta ação remove o aluno do sistema de frequência e da biometria.`)) return;
+
+    // 1. Soft-delete no banco local
+    await db.alunos.deactivate(aluno.id);
+
+    // 2. Remover biometria do equipamento Control iD (se configurado)
+    if (aluno.idface_user_id && aluno.escola_id) {
+      try {
+        const configResult = await db.iotConfig.getByEscola(aluno.escola_id);
+        const config = configResult.data as any;
+        if (config?.ip_address) {
+          await fetch('http://localhost:3000/api/delete-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip: config.ip_address, internalUserId: aluno.idface_user_id }),
+          });
+        }
+      } catch (hwErr) {
+        console.warn('Falha ao remover biometria do equipamento:', hwErr);
+      }
+    }
+
+    toast.success(`${aluno.nome_completo} inativado com sucesso.`);
+    load();
+  };
+
   const filteredSeries = form.escola_id ? series.filter(s => s.escola_id === form.escola_id) : [];
   const filteredTurmas = form.serie_id ? turmas.filter(t => t.serie_id === form.serie_id && t.escola_id === form.escola_id) : [];
 
-  const columns = getAlunoColumns();
+  // Coluna de ação de exclusão
+  const deleteColumn = {
+    key: 'delete_action',
+    header: '',
+    sortable: false,
+    render: (r: AlunoRow) => (
+      <button
+        onClick={(e) => { e.stopPropagation(); deactivate(r); }}
+        className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+        title="Inativar aluno"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    ),
+  };
+
+  const columns = [...getAlunoColumns(), deleteColumn];
 
   return (
     <div>
@@ -214,7 +267,13 @@ export default function Alunos() {
                 <Button onClick={save} className="w-full" disabled={!form.nome_completo.trim() || !form.escola_id}>Salvar</Button>
               </div>
             </TabsContent>
-            <TabsContent value="resp"><ResponsavelTab form={form} onFormChange={(updates) => setForm({ ...form, ...updates })} /></TabsContent>
+            <TabsContent value="resp">
+              <ResponsavelTab
+                alunoId={editing?.id}
+                form={form}
+                onFormChange={(updates) => setForm({ ...form, ...updates })}
+              />
+            </TabsContent>
             <TabsContent value="biometria"><BiometriaTab aluno={form} /></TabsContent>
           </Tabs>
         </SheetContent>
