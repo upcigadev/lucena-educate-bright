@@ -268,6 +268,21 @@ async function getUserImage(ip, internalUserId) {
   }
 }
 
+async function getUserImageBuffer(ip, internalUserId) {
+  if (!sessionToken) await login(ip);
+
+  try {
+    const response = await axios.get(
+      `http://${ip}/user_get_image.fcgi?session=${sessionToken}&user_id=${internalUserId}`,
+      { responseType: 'arraybuffer', timeout: 10000 }
+    );
+    return Buffer.from(response.data);
+  } catch (error) {
+    if (error.response && error.response.status === 401) sessionToken = null;
+    throw new Error(`Erro ao obter imagem (buffer) do usuário: ${error.message}`);
+  }
+}
+
 module.exports = {
   checkConnection,
   startFaceCapture,
@@ -275,5 +290,6 @@ module.exports = {
   getUsers,
   deleteUser,
   updateUser,
-  getUserImage
+  getUserImage,
+  getUserImageBuffer,
 };

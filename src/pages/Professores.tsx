@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { criarUsuario } from '@/lib/criar-usuario';
 import { Trash2 } from 'lucide-react';
 
-interface ProfRow { id: string; usuario_id: string; nome: string; cpf: string; escolas: string[]; }
+interface ProfRow { id: string; usuario_id: string; nome: string; cpf: string; escolas: string[]; turmas: string[]; }
 
 export default function Professores() {
   const [data, setData] = useState<ProfRow[]>([]);
@@ -78,6 +78,13 @@ export default function Professores() {
     { key: 'cpf', header: 'CPF', render: r => maskCPF(r.cpf) },
     { key: 'escolas', header: 'Escolas', render: r => (
       <div className="flex flex-wrap gap-1">{r.escolas.map((e, i) => <Badge key={i} variant="secondary" className="text-xs">{e}</Badge>)}</div>
+    )},
+    { key: 'turmas', header: 'Turmas', render: r => (
+      <div className="flex flex-wrap gap-1">
+        {(r.turmas || []).length > 0
+          ? r.turmas.map((t, i) => <Badge key={i} variant="outline" className="text-xs">{t}</Badge>)
+          : <span className="text-xs text-muted-foreground">—</span>}
+      </div>
     )},
     { key: 'delete_action', header: '', sortable: false, render: r => (
       <button onClick={(e) => { e.stopPropagation(); deactivate(r); }} className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Inativar">

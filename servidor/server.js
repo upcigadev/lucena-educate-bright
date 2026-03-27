@@ -44,6 +44,7 @@ app.post('/api/connect', async (req, res) => {
   }
   try {
     const result = await deviceService.checkConnection(ip);
+    cachedDeviceIp = ip; // cache para o proxy de fotos
     return res.json({ success: true, data: result });
   } catch (error) {
     console.error('Connection error:', error);
@@ -185,6 +186,27 @@ app.post('/api/sync-images', async (req, res) => {
 
   console.log(`[sync-images] Concluído: ${fetched} imagens obtidas, ${failed} falhas.`);
   return res.json({ success: true, data: { results, fetched, failed } });
+});
+
+// Proxy de foto: busca a imagem diretamente do hardware iDFace em tempo real.
+// O frontend passa o IP via query param: GET /api/device/photo/<internalId>?ip=<ip>
+// Retorna binary JPEG ou 404 se o aluno não tiver biometria cadastrada no aparelho.
+let cachedDeviceIp = null; // IP salvo ao conectar via /api/connect
+app.get('/api/device/photo/:internalId', async (req, res) => {
+  const { internalId } = req.params;
+  const ip = req.query.ip || cachedDeviceIp;
+  if (!ip) {
+    return res.status(400).json({ error: 'IP do dispositivo não informado. Passe ?ip= ou conecte-se primeiro via /api/connect.' });
+  }
+  try {
+    const buffer = await deviceService.getUserImageBuffer(ip, internalId);
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.send(buffer);
+  } catch (error) {
+    // Qualquer falha (foto não existe, aparelho offline) → 404 para o AvatarFallback exibir iniciais
+    return res.status(404).end();
+  }
 });
 
 // Webhooks do aparelho (mesma lógica do servidor anterior; emite via Socket.IO)

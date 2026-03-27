@@ -40,7 +40,9 @@ export function getAlunoColumns(): Column<AlunoRow>[] {
       sortable: false,
       render: (r) => (
         <Avatar className="h-9 w-9">
-          <AvatarImage src={r.avatar_url || ''} />
+          <AvatarImage
+            src={r.idface_user_id ? `http://localhost:3000/api/device/photo/${r.idface_user_id}` : ''}
+          />
           <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
             {r.nome_completo.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
           </AvatarFallback>

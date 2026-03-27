@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Plus, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Plus, ChevronDown, AlertTriangle, Pencil } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 
@@ -22,6 +24,16 @@ const TURMA_LETRAS = [
 
 interface Serie { id: string; nome: string; escola_id: string; horario_inicio: string | null; tolerancia_min: number | null; limite_max: string | null; }
 interface Turma { id: string; nome: string; serie_id: string; escola_id: string; sala: string | null; horario_inicio: string | null; tolerancia_min: number | null; limite_max: string | null; }
+interface ProfOption { id: string; usuario_id: string; nome: string; }
+
+interface EditTurmaForm {
+  nome: string;
+  sala: string;
+  horario_inicio: string;
+  tolerancia_min: string;
+  limite_max: string;
+  selectedProfIds: string[];
+}
 
 export function SeriesTurmasTab({ escolaId }: { escolaId: string }) {
   const [series, setSeries] = useState<Serie[]>([]);
@@ -30,6 +42,12 @@ export function SeriesTurmasTab({ escolaId }: { escolaId: string }) {
   const [showTurmaForm, setShowTurmaForm] = useState<string | null>(null);
   const [serieForm, setSerieForm] = useState({ nome: '', horario_inicio: '07:00', tolerancia_min: '15', limite_max: '07:30' });
   const [turmaForm, setTurmaForm] = useState({ letra: '', sala: '', horario_inicio: '', tolerancia_min: '', limite_max: '' });
+
+  // Edit Turma modal state
+  const [editTurma, setEditTurma] = useState<Turma | null>(null);
+  const [editForm, setEditForm] = useState<EditTurmaForm>({ nome: '', sala: '', horario_inicio: '', tolerancia_min: '', limite_max: '', selectedProfIds: [] });
+  const [allProfessores, setAllProfessores] = useState<ProfOption[]>([]);
+  const [loadingEdit, setLoadingEdit] = useState(false);
 
   const load = async () => {
     const { data: s } = await db.series.listByEscola(escolaId);
@@ -71,6 +89,55 @@ export function SeriesTurmasTab({ escolaId }: { escolaId: string }) {
     toast.success('Turma criada.');
     setShowTurmaForm(null);
     setTurmaForm({ letra: '', sala: '', horario_inicio: '', tolerancia_min: '', limite_max: '' });
+    load();
+  };
+
+  // ── Edit Turma ──────────────────────────────────────────────────────
+  const openEditTurma = async (turma: Turma) => {
+    setLoadingEdit(true);
+    setEditTurma(turma);
+    setEditForm({
+      nome: turma.nome,
+      sala: turma.sala || '',
+      horario_inicio: turma.horario_inicio || '',
+      tolerancia_min: turma.tolerancia_min != null ? String(turma.tolerancia_min) : '',
+      limite_max: turma.limite_max || '',
+      selectedProfIds: [],
+    });
+
+    // Load all professors and the ones already linked to this turma
+    const [{ data: profs }, { data: linked }] = await Promise.all([
+      db.professores.listAll(),
+      db.turma_professores.listProfessoresCompleto(turma.id),
+    ]);
+    setAllProfessores((profs as ProfOption[]) || []);
+    const linkedIds = ((linked as any[]) || []).map((p: any) => p.professor_id);
+    setEditForm(prev => ({ ...prev, selectedProfIds: linkedIds }));
+    setLoadingEdit(false);
+  };
+
+  const toggleProfessor = (profId: string) => {
+    setEditForm(prev => ({
+      ...prev,
+      selectedProfIds: prev.selectedProfIds.includes(profId)
+        ? prev.selectedProfIds.filter(id => id !== profId)
+        : [...prev.selectedProfIds, profId],
+    }));
+  };
+
+  const saveEditTurma = async () => {
+    if (!editTurma) return;
+    if (!editForm.nome.trim()) { toast.error('Nome da turma é obrigatório.'); return; }
+    await db.turmas.update(editTurma.id, {
+      nome: editForm.nome.trim(),
+      sala: editForm.sala || null,
+      horario_inicio: editForm.horario_inicio || null,
+      tolerancia_min: editForm.tolerancia_min ? parseInt(editForm.tolerancia_min) : null,
+      limite_max: editForm.limite_max || null,
+    });
+    await db.turma_professores.setProfessores(editTurma.id, editForm.selectedProfIds);
+    toast.success('Turma atualizada.');
+    setEditTurma(null);
     load();
   };
 
@@ -118,6 +185,15 @@ export function SeriesTurmasTab({ escolaId }: { escolaId: string }) {
                     {turma.sala && <span className="text-xs text-muted-foreground">Sala: {turma.sala}</span>}
                     {hasOwnSchedule && <Badge variant="outline" className="gap-1 text-xs text-warning border-warning/30"><AlertTriangle className="h-3 w-3" /> Horário próprio</Badge>}
                   </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                    title="Editar turma"
+                    onClick={() => openEditTurma(turma)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               );
             })}
@@ -145,6 +221,64 @@ export function SeriesTurmasTab({ escolaId }: { escolaId: string }) {
           </CollapsibleContent>
         </Collapsible>
       ))}
+
+      {/* ── Edit Turma Modal ───────────────────────────────────────── */}
+      <Dialog open={!!editTurma} onOpenChange={(open) => { if (!open) setEditTurma(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Turma</DialogTitle>
+          </DialogHeader>
+          {loadingEdit ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">Carregando…</div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Nome da Turma *</Label>
+                <Input value={editForm.nome} onChange={e => setEditForm({ ...editForm, nome: e.target.value })} className="h-8 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Nº da Sala</Label>
+                  <Input value={editForm.sala} onChange={e => setEditForm({ ...editForm, sala: e.target.value.replace(/\D/g, '') })} className="h-8 text-sm" placeholder="Ex: 101" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Horário Início</Label>
+                  <Input type="time" value={editForm.horario_inicio} onChange={e => setEditForm({ ...editForm, horario_inicio: e.target.value })} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Tolerância (min)</Label>
+                  <Input type="number" value={editForm.tolerancia_min} onChange={e => setEditForm({ ...editForm, tolerancia_min: e.target.value })} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Limite Máximo</Label>
+                  <Input type="time" value={editForm.limite_max} onChange={e => setEditForm({ ...editForm, limite_max: e.target.value })} className="h-8 text-sm" />
+                </div>
+              </div>
+
+              {allProfessores.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Professores desta turma</Label>
+                  <div className="rounded-lg border p-3 max-h-40 overflow-y-auto space-y-2">
+                    {allProfessores.map(prof => (
+                      <label key={prof.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <Checkbox
+                          checked={editForm.selectedProfIds.includes(prof.id)}
+                          onCheckedChange={() => toggleProfessor(prof.id)}
+                        />
+                        {prof.nome}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setEditTurma(null)}>Cancelar</Button>
+            <Button size="sm" onClick={saveEditTurma} disabled={!editForm.nome.trim() || loadingEdit}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

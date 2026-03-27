@@ -80,6 +80,20 @@ export const db = {
         [id, data.nome, data.serie_id, data.escola_id, data.sala || null, data.horario_inicio || null, data.tolerancia_min ?? null, data.limite_max || null]);
       return ok({ id });
     },
+    update: async (id: string, data: { nome?: string; sala?: string | null; horario_inicio?: string | null; tolerancia_min?: number | null; limite_max?: string | null }) => {
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (data.nome !== undefined) { sets.push('nome = ?'); vals.push(data.nome); }
+      if (data.sala !== undefined) { sets.push('sala = ?'); vals.push(data.sala); }
+      if (data.horario_inicio !== undefined) { sets.push('horario_inicio = ?'); vals.push(data.horario_inicio); }
+      if (data.tolerancia_min !== undefined) { sets.push('tolerancia_min = ?'); vals.push(data.tolerancia_min); }
+      if (data.limite_max !== undefined) { sets.push('limite_max = ?'); vals.push(data.limite_max); }
+      if (sets.length > 0) {
+        vals.push(id);
+        await run(`UPDATE turmas SET ${sets.join(', ')} WHERE id = ?`, vals);
+      }
+      return ok(null);
+    },
   },
 
   alunos: {
@@ -279,9 +293,21 @@ export const db = {
         const escolas = await query(`
           SELECT e.nome FROM professor_escolas pe JOIN escolas e ON pe.escola_id = e.id WHERE pe.professor_id = ?
         `, [prof.id]);
-        result.push({ ...prof, escolas: escolas.map(e => e.nome) });
+        const turmas = await query(`
+          SELECT t.nome FROM turma_professores tp JOIN turmas t ON tp.turma_id = t.id WHERE tp.professor_id = ?
+        `, [prof.id]);
+        result.push({ ...prof, escolas: escolas.map(e => e.nome), turmas: turmas.map(t => t.nome) });
       }
       return ok(result);
+    },
+    listAll: async () => {
+      const rows = await query(`
+        SELECT p.id, p.usuario_id, u.nome
+        FROM professores p
+        JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
+        ORDER BY u.nome
+      `);
+      return ok(rows);
     },
     insert: async (data: { usuario_id: string }) => {
       const id = generateId();
@@ -390,6 +416,17 @@ export const db = {
   },
 
   frequencias: {
+    // Busca todas as frequências de uma data com dados do aluno (para pré-carregar o histórico de chamada)
+    listByDate: async (date: string) => {
+      const rows = await query(`
+        SELECT f.*, a.nome_completo, a.matricula, a.idface_user_id, a.horario_fim, a.limite_max
+        FROM frequencias f
+        JOIN alunos a ON f.aluno_id = a.id
+        WHERE f.data = ?
+        ORDER BY f.created_at DESC
+      `, [date]);
+      return ok(rows);
+    },
     listByTurmaAndDate: async (turmaId: string, date: string) => {
       const rows = await query(`
         SELECT f.*, a.nome_completo, a.matricula
@@ -525,6 +562,26 @@ export const db = {
         WHERE tp.turma_id = ?
       `, [turmaId]);
       return ok(rows);
+    },
+    // Retorna professores vinculados com id e nome (para o modal de edição)
+    listProfessoresCompleto: async (turmaId: string) => {
+      const rows = await query<{ professor_id: string; nome: string }>(`
+        SELECT tp.professor_id, u.nome
+        FROM turma_professores tp
+        JOIN professores p ON tp.professor_id = p.id
+        JOIN usuarios u ON p.usuario_id = u.id
+        WHERE tp.turma_id = ?
+      `, [turmaId]);
+      return ok(rows);
+    },
+    // Substitui todos os professores de uma turma (delete + bulk insert)
+    setProfessores: async (turmaId: string, professorIds: string[]) => {
+      await run('DELETE FROM turma_professores WHERE turma_id = ?', [turmaId]);
+      for (const profId of professorIds) {
+        const id = generateId();
+        await run('INSERT INTO turma_professores (id, turma_id, professor_id) VALUES (?, ?, ?)', [id, turmaId, profId]);
+      }
+      return ok(null);
     },
   },
 };

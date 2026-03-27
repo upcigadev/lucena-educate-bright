@@ -59,6 +59,46 @@ export default function Frequencia() {
   const photoBuffer = useRef<Map<string, string>>(new Map()); // userId → dataUri
   const socketRef = useRef<Socket | null>(null);
 
+  // ── Load today's history from SQLite on mount ─────────────────────
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    db.frequencias.listByDate(today).then(({ data }) => {
+      if (!data || data.length === 0) return;
+      const historicCards: AccessCard[] = (data as any[]).map((row) => {
+        const horario = row.hora_entrada
+          ? String(row.hora_entrada).slice(0, 8)
+          : '--:--:--';
+        const [hh, mm] = horario.split(':').map(Number);
+        const nowMin = hh * 60 + mm;
+        const limiteMin = timeToMin(row.limite_max);
+        const fimMin = timeToMin(row.horario_fim);
+        const status: AccessCard['status'] =
+          row.status === 'atrasado'
+            ? 'atrasado'
+            : row.status === 'presente'
+            ? 'presente'
+            : limiteMin != null && nowMin > limiteMin
+            ? 'acesso'
+            : fimMin != null && nowMin > fimMin
+            ? 'atrasado'
+            : 'presente';
+        const avatarUrl = row.idface_user_id
+          ? `http://localhost:3000/api/device/photo/${row.idface_user_id}`
+          : null;
+        return {
+          id: `hist-${row.id}`,
+          nome: row.nome_completo ?? `Matrícula ${row.matricula}`,
+          matricula: row.matricula ?? '',
+          avatarUrl,
+          horario,
+          status,
+        };
+      });
+      setCards(historicCards.slice(0, MAX_CARDS));
+    }).catch((e) => console.warn('[Frequencia] Erro ao carregar histórico:', e));
+  }, []);
+
+  // ── Real-time WebSocket connection ────────────────────────────────
   useEffect(() => {
     const socket = io('http://localhost:3000', {
       reconnectionAttempts: Infinity,
