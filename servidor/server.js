@@ -53,13 +53,14 @@ app.post('/api/connect', async (req, res) => {
 });
 
 app.post('/api/capture', async (req, res) => {
-  const { ip, internalUserId, userId } = req.body || {};
+  const { ip, internalUserId, userId, countdown } = req.body || {};
   const uid = internalUserId ?? userId;
   if (!ip || uid == null) {
     return jsonError(res, 400, 'Informe ip e internalUserId (ou userId) no corpo da requisição.');
   }
   try {
-    const result = await deviceService.startFaceCapture(ip, String(uid));
+    const countdownSecs = typeof countdown === 'number' && countdown > 0 ? countdown : 5;
+    const result = await deviceService.startFaceCapture(ip, String(uid), countdownSecs);
     return res.json({ success: true, data: result });
   } catch (error) {
     console.error('Face capture error:', error);

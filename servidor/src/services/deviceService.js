@@ -63,7 +63,7 @@ async function checkConnection(ip) {
   return { status: 'connected', ip };
 }
 
-async function startFaceCapture(ip, internalUserId) {
+async function startFaceCapture(ip, internalUserId, countdown = 5) {
   if (!sessionToken) await login(ip);
   
   try {
@@ -73,7 +73,7 @@ async function startFaceCapture(ip, internalUserId) {
       save: true,
       sync: true,
       auto: true,      // Habilita o modo automático (ignora o botão físico)
-      countdown: 5     // Inicia a contagem regressiva de 5 segundos
+      countdown: countdown // Configurável pela escola via IoTConfig
     }, { timeout: 60000 });
 
     return { status: 'success', data: response.data };
