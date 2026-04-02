@@ -33,17 +33,28 @@ export const db = {
         [id, data.nome, data.inep || null, data.endereco || null, data.telefone || null]);
       return ok({ id });
     },
-    update: async (id: string, data: { nome?: string; inep?: string | null; endereco?: string | null; telefone?: string | null }) => {
+    update: async (id: string, data: { nome?: string; inep?: string | null; endereco?: string | null; telefone?: string | null; horario_inicio?: string | null; tolerancia_min?: number | null; limite_max?: string | null }) => {
       const sets: string[] = [];
       const vals: any[] = [];
       if (data.nome !== undefined) { sets.push('nome = ?'); vals.push(data.nome); }
       if (data.inep !== undefined) { sets.push('inep = ?'); vals.push(data.inep); }
       if (data.endereco !== undefined) { sets.push('endereco = ?'); vals.push(data.endereco); }
       if (data.telefone !== undefined) { sets.push('telefone = ?'); vals.push(data.telefone); }
+      if (data.horario_inicio !== undefined) { sets.push('horario_inicio = ?'); vals.push(data.horario_inicio); }
+      if (data.tolerancia_min !== undefined) { sets.push('tolerancia_min = ?'); vals.push(data.tolerancia_min); }
+      if (data.limite_max !== undefined) { sets.push('limite_max = ?'); vals.push(data.limite_max); }
       if (sets.length > 0) {
         vals.push(id);
         await run(`UPDATE escolas SET ${sets.join(', ')} WHERE id = ?`, vals);
       }
+      return ok(null);
+    },
+    /** Propagate schedule to all series and turmas of a school */
+    applyScheduleToAll: async (escolaId: string, horario_inicio: string | null, tolerancia_min: number | null, limite_max: string | null) => {
+      await run('UPDATE series SET horario_inicio = ?, tolerancia_min = ?, limite_max = ? WHERE escola_id = ?',
+        [horario_inicio, tolerancia_min, limite_max, escolaId]);
+      await run('UPDATE turmas SET horario_inicio = ?, tolerancia_min = ?, limite_max = ? WHERE escola_id = ?',
+        [horario_inicio, tolerancia_min, limite_max, escolaId]);
       return ok(null);
     },
   },
@@ -59,11 +70,46 @@ export const db = {
         [id, data.nome, data.escola_id, data.horario_inicio || '07:00', data.tolerancia_min ?? 15, data.limite_max || '07:30']);
       return ok({ id });
     },
+    update: async (id: string, data: { horario_inicio?: string | null; tolerancia_min?: number | null; limite_max?: string | null }) => {
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (data.horario_inicio !== undefined) { sets.push('horario_inicio = ?'); vals.push(data.horario_inicio); }
+      if (data.tolerancia_min !== undefined) { sets.push('tolerancia_min = ?'); vals.push(data.tolerancia_min); }
+      if (data.limite_max !== undefined) { sets.push('limite_max = ?'); vals.push(data.limite_max); }
+      if (sets.length > 0) { vals.push(id); await run(`UPDATE series SET ${sets.join(', ')} WHERE id = ?`, vals); }
+      return ok(null);
+    },
+    delete: async (serieId: string) => {
+      // Get all turmas in this serie
+      const turmasNaSerie = await query<{ id: string }>('SELECT id FROM turmas WHERE serie_id = ?', [serieId]);
+      // For each turma: unassign students and remove professor links, then delete the turma
+      for (const turma of turmasNaSerie) {
+        await run('UPDATE alunos SET turma_id = NULL WHERE turma_id = ?', [turma.id]);
+        await run('DELETE FROM turma_professores WHERE turma_id = ?', [turma.id]);
+        await run('DELETE FROM turmas WHERE id = ?', [turma.id]);
+      }
+      // Finally delete the serie
+      await run('DELETE FROM series WHERE id = ?', [serieId]);
+      return ok(null);
+    },
   },
 
   turmas: {
     listByEscola: async (escolaId: string) => {
       const rows = await query('SELECT * FROM turmas WHERE escola_id = ? ORDER BY nome', [escolaId]);
+      return ok(rows);
+    },
+    listByProfessor: async (usuarioId: string) => {
+      const rows = await query(`
+        SELECT t.*, s.nome as serie_nome, e.nome as escola_nome
+        FROM turmas t
+        JOIN turma_professores tp ON t.id = tp.turma_id
+        JOIN professores p ON tp.professor_id = p.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON t.escola_id = e.id
+        WHERE p.usuario_id = ?
+        ORDER BY t.nome
+      `, [usuarioId]);
       return ok(rows);
     },
     listAll: async () => {
@@ -75,6 +121,14 @@ export const db = {
       return ok(rows[0] || null);
     },
     insert: async (data: { nome: string; serie_id: string; escola_id: string; sala?: string | null; horario_inicio?: string | null; tolerancia_min?: number | null; limite_max?: string | null }) => {
+      // Block duplicates: same name in same school
+      const dup = await query<{ id: string }>(
+        'SELECT id FROM turmas WHERE nome = ? AND escola_id = ? LIMIT 1',
+        [data.nome, data.escola_id]
+      );
+      if (dup.length > 0) {
+        throw new Error(`Turma "${data.nome}" já existe nesta escola.`);
+      }
       const id = generateId();
       await run('INSERT INTO turmas (id, nome, serie_id, escola_id, sala, horario_inicio, tolerancia_min, limite_max) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [id, data.nome, data.serie_id, data.escola_id, data.sala || null, data.horario_inicio || null, data.tolerancia_min ?? null, data.limite_max || null]);
@@ -92,6 +146,15 @@ export const db = {
         vals.push(id);
         await run(`UPDATE turmas SET ${sets.join(', ')} WHERE id = ?`, vals);
       }
+      return ok(null);
+    },
+    delete: async (id: string) => {
+      // Unassign students from this turma
+      await run('UPDATE alunos SET turma_id = NULL WHERE turma_id = ?', [id]);
+      // Remove professor links
+      await run('DELETE FROM turma_professores WHERE turma_id = ?', [id]);
+      // Delete the turma itself
+      await run('DELETE FROM turmas WHERE id = ?', [id]);
       return ok(null);
     },
   },
@@ -117,7 +180,35 @@ export const db = {
       return ok(rows);
     },
     listByEscola: async (escolaId: string) => {
-      const rows = await query('SELECT * FROM alunos WHERE escola_id = ? AND ativo = 1 ORDER BY nome_completo', [escolaId]);
+      const rows = await query(`
+        SELECT a.*, 
+          COALESCE(t.nome, 'Sem turma') as turma_nome,
+          COALESCE(s.nome, '') as serie_nome,
+          COALESCE(e.nome, '') as escola_nome
+        FROM alunos a
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE a.escola_id = ? AND a.ativo = 1
+        ORDER BY a.nome_completo
+      `, [escolaId]);
+      return ok(rows);
+    },
+    listByProfessorUsuarioId: async (usuarioId: string) => {
+      const rows = await query(`
+        SELECT DISTINCT a.*, 
+          COALESCE(t.nome, 'Sem turma') as turma_nome,
+          COALESCE(s.nome, '') as serie_nome,
+          COALESCE(e.nome, '') as escola_nome
+        FROM alunos a
+        JOIN turma_professores tp ON a.turma_id = tp.turma_id
+        JOIN professores p ON tp.professor_id = p.id
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE p.usuario_id = ? AND a.ativo = 1
+        ORDER BY a.nome_completo
+      `, [usuarioId]);
       return ok(rows);
     },
     countByEscola: async (escolaId: string) => {
@@ -309,6 +400,27 @@ export const db = {
       `);
       return ok(rows);
     },
+    listByEscola: async (escolaId: string) => {
+      const rows = await query(`
+        SELECT p.id, p.usuario_id, u.nome, u.cpf
+        FROM professores p
+        JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
+        JOIN professor_escolas pe ON p.id = pe.professor_id
+        WHERE pe.escola_id = ?
+        ORDER BY u.nome
+      `, [escolaId]);
+      const result = [];
+      for (const prof of rows) {
+        const escolas = await query(`
+          SELECT e.nome FROM professor_escolas pe JOIN escolas e ON pe.escola_id = e.id WHERE pe.professor_id = ?
+        `, [prof.id]);
+        const turmas = await query(`
+          SELECT t.nome FROM turma_professores tp JOIN turmas t ON tp.turma_id = t.id WHERE tp.professor_id = ?
+        `, [prof.id]);
+        result.push({ ...prof, escolas: escolas.map(e => e.nome), turmas: turmas.map(t => t.nome) });
+      }
+      return ok(result);
+    },
     insert: async (data: { usuario_id: string }) => {
       const id = generateId();
       await run('INSERT INTO professores (id, usuario_id) VALUES (?, ?)', [id, data.usuario_id]);
@@ -350,14 +462,17 @@ export const db = {
       const rows = await query(`
         SELECT r.id, r.usuario_id, r.telefone, u.nome, u.cpf
         FROM responsaveis r
-        JOIN usuarios u ON r.usuario_id = u.id
+        JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
         ORDER BY u.nome
       `);
       // For each responsavel, get their alunos
       const result = [];
       for (const resp of rows) {
         const alunos = await query(`
-          SELECT a.nome_completo FROM aluno_responsaveis ar JOIN alunos a ON ar.aluno_id = a.id WHERE ar.responsavel_id = ?
+          SELECT a.nome_completo 
+          FROM aluno_responsaveis ar 
+          JOIN alunos a ON ar.aluno_id = a.id 
+          WHERE ar.responsavel_id = ? AND a.ativo = 1
         `, [resp.id]);
         result.push({ ...resp, alunos: alunos.map(a => a.nome_completo) });
       }
@@ -419,7 +534,7 @@ export const db = {
     // Busca todas as frequências de uma data com dados do aluno (para pré-carregar o histórico de chamada)
     listByDate: async (date: string) => {
       const rows = await query(`
-        SELECT f.*, a.nome_completo, a.matricula, a.idface_user_id, a.horario_fim, a.limite_max
+        SELECT f.*, a.nome_completo, a.matricula, a.idface_user_id, a.horario_fim, a.limite_max, a.escola_id
         FROM frequencias f
         JOIN alunos a ON f.aluno_id = a.id
         WHERE f.data = ?
@@ -458,15 +573,37 @@ export const db = {
           SUM(CASE WHEN f.status IN ('presente', 'atrasado') THEN 1 ELSE 0 END) as presentes
         FROM frequencias f
         JOIN alunos a ON f.aluno_id = a.id
-        WHERE a.escola_id = ? AND f.data = ?
+        WHERE a.escola_id = ? AND f.data = ? AND a.ativo = 1
       `, [escolaId, date]);
       return ok(rows[0] || { total: 0, presentes: 0 });
+    },
+    frequenciaHojeByProfessor: async (usuarioId: string, date: string) => {
+      const rows = await query<{ turma_id: string, turma_nome: string, total_alunos: number, frequencias_registradas: number, presentes: number }>(`
+        SELECT 
+          t.id as turma_id,
+          t.nome as turma_nome,
+          COUNT(DISTINCT a.id) as total_alunos,
+          SUM(CASE WHEN f.id IS NOT NULL THEN 1 ELSE 0 END) as frequencias_registradas,
+          SUM(CASE WHEN f.id IS NOT NULL AND f.status IN ('presente', 'atrasado') THEN 1 ELSE 0 END) as presentes
+        FROM turmas t
+        JOIN turma_professores tp ON t.id = tp.turma_id
+        JOIN professores p ON tp.professor_id = p.id
+        LEFT JOIN alunos a ON t.id = a.turma_id AND a.ativo = 1
+        LEFT JOIN frequencias f ON a.id = f.aluno_id AND f.data = ?
+        WHERE p.usuario_id = ?
+        GROUP BY t.id, t.nome
+      `, [date, usuarioId]);
+      return ok(rows);
     },
     insert: async (data: { aluno_id: string; turma_id?: string | null; data: string; hora_entrada?: string | null; status?: string; motivo?: string | null; dispositivo_id?: string | null }) => {
       const id = generateId();
       await run('INSERT INTO frequencias (id, aluno_id, turma_id, data, hora_entrada, status, motivo, dispositivo_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [id, data.aluno_id, data.turma_id || null, data.data, data.hora_entrada || null, data.status || 'falta', data.motivo || null, data.dispositivo_id || null]);
       return ok({ id });
+    },
+    updateStatus: async (id: string, status: string) => {
+      await run('UPDATE frequencias SET status = ? WHERE id = ?', [status, id]);
+      return ok(null);
     },
     // Calcula o percentual de presenças do aluno no mês atual
     // Considera presente + atrasado como presença; falta e justificada como ausência.
@@ -524,15 +661,16 @@ export const db = {
       const rows = await query('SELECT * FROM escola_iot_config WHERE escola_id = ?', [escolaId]);
       return ok(rows[0] || null);
     },
-    upsert: async (data: { escola_id: string; ip_address?: string | null; ativo?: boolean; modo_verificacao?: string }) => {
+    upsert: async (data: { escola_id: string; ip_address?: string | null; ativo?: boolean; modo_verificacao?: string; captura_timeout?: number | null }) => {
       const existing = await query('SELECT id FROM escola_iot_config WHERE escola_id = ?', [data.escola_id]);
+      const timeout = data.captura_timeout ?? 5;
       if (existing.length > 0) {
-        await run('UPDATE escola_iot_config SET ip_address = ?, ativo = ?, modo_verificacao = ? WHERE escola_id = ?',
-          [data.ip_address || null, data.ativo !== false ? 1 : 0, data.modo_verificacao || 'entrada', data.escola_id]);
+        await run('UPDATE escola_iot_config SET ip_address = ?, ativo = ?, modo_verificacao = ?, captura_timeout = ? WHERE escola_id = ?',
+          [data.ip_address || null, data.ativo !== false ? 1 : 0, data.modo_verificacao || 'entrada', timeout, data.escola_id]);
       } else {
         const id = generateId();
-        await run('INSERT INTO escola_iot_config (id, escola_id, ip_address, ativo, modo_verificacao) VALUES (?, ?, ?, ?, ?)',
-          [id, data.escola_id, data.ip_address || null, data.ativo !== false ? 1 : 0, data.modo_verificacao || 'entrada']);
+        await run('INSERT INTO escola_iot_config (id, escola_id, ip_address, ativo, modo_verificacao, captura_timeout) VALUES (?, ?, ?, ?, ?, ?)',
+          [id, data.escola_id, data.ip_address || null, data.ativo !== false ? 1 : 0, data.modo_verificacao || 'entrada', timeout]);
       }
       return ok(null);
     },
@@ -549,6 +687,33 @@ export const db = {
         alunos: alunos[0]?.c || 0,
         professores: professores[0]?.c || 0,
         diretores: diretores[0]?.c || 0,
+      });
+    },
+    countsByEscola: async (escolaId: string) => {
+      const alunos = await query<{ c: number }>('SELECT COUNT(*) as c FROM alunos WHERE escola_id = ? AND ativo = 1', [escolaId]);
+      const professores = await query<{ c: number }>('SELECT COUNT(DISTINCT pe.professor_id) as c FROM professor_escolas pe WHERE pe.escola_id = ?', [escolaId]);
+      const turmas = await query<{ c: number }>('SELECT COUNT(*) as c FROM turmas WHERE escola_id = ?', [escolaId]);
+      return ok({
+        alunos: alunos[0]?.c || 0,
+        professores: professores[0]?.c || 0,
+        turmas: turmas[0]?.c || 0,
+      });
+    },
+    countsByProfessor: async (usuarioId: string) => {
+      const turmas = await query<{ c: number }>(`
+        SELECT COUNT(DISTINCT tp.turma_id) as c FROM turma_professores tp
+        JOIN professores p ON tp.professor_id = p.id
+        WHERE p.usuario_id = ?
+      `, [usuarioId]);
+      const alunos = await query<{ c: number }>(`
+        SELECT COUNT(DISTINCT a.id) as c FROM alunos a
+        JOIN turma_professores tp ON a.turma_id = tp.turma_id
+        JOIN professores p ON tp.professor_id = p.id
+        WHERE p.usuario_id = ? AND a.ativo = 1
+      `, [usuarioId]);
+      return ok({
+        turmas: turmas[0]?.c || 0,
+        alunos: alunos[0]?.c || 0,
       });
     },
   },

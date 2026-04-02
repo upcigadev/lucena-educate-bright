@@ -19,6 +19,7 @@ export default function IoTConfig() {
   const [escolas, setEscolas] = useState<{id: string, nome: string}[]>([]);
   const [escolaId, setEscolaId] = useState<string>(escolaAtiva || '');
   const [ip, setIp] = useState('');
+  const [capturaTimeout, setCapturaTimeout] = useState<number>(5);
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [syncing, setSyncing] = useState(false);
 
@@ -46,6 +47,7 @@ export default function IoTConfig() {
           setIp('');
           setStatus('idle');
         }
+        setCapturaTimeout((res.data as any)?.captura_timeout ?? 5);
       });
     }
   }, [escolaId]);
@@ -64,7 +66,7 @@ export default function IoTConfig() {
       
       if (!response.ok) throw new Error('Falha na comunicação');
       
-      await db.iotConfig.upsert({ escola_id: escolaId, ip_address: ip, ativo: true });
+      await db.iotConfig.upsert({ escola_id: escolaId, ip_address: ip, ativo: true, captura_timeout: capturaTimeout });
       
       setStatus('connected');
       toast.success('Conexão bem-sucedida e IP salvo com sucesso!');
@@ -241,6 +243,19 @@ export default function IoTConfig() {
               <Label htmlFor="device-ip" className="text-sm font-medium">Endereço IP do Equipamento</Label>
               <Input id="device-ip" placeholder="192.168.0.201" value={ip} onChange={e => setIp(e.target.value)} className="font-mono" />
               <p className="text-xs text-muted-foreground">Informe o IP fixo do terminal iDFace na rede local da escola.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="captura-timeout" className="text-sm font-medium">Tempo de Captura Facial (segundos)</Label>
+              <Input
+                id="captura-timeout"
+                type="number"
+                min={1}
+                max={30}
+                value={capturaTimeout}
+                onChange={e => setCapturaTimeout(Math.min(30, Math.max(1, Number(e.target.value) || 5)))}
+                className="w-32"
+              />
+              <p className="text-xs text-muted-foreground">Contagem regressiva exibida no terminal ao iniciar a captura (padrão: 5s).</p>
             </div>
             {status === 'connected' && (
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-2">

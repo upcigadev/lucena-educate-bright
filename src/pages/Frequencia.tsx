@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
@@ -6,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Wifi, WifiOff, Radio, Clock, UserCheck } from 'lucide-react';
 import { db } from '@/lib/mock-db';
+import { useAuthStore } from '@/stores/authStore';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -52,8 +54,10 @@ function getInitials(nome: string): string {
 /* ------------------------------------------------------------------ */
 
 export default function Frequencia() {
+  const { turmaId } = useParams();
   const [connStatus, setConnStatus] = useState<ConnStatus>('connecting');
   const [cards, setCards] = useState<AccessCard[]>([]);
+  const { perfil, escolaAtiva } = useAuthStore();
 
   // Buffer received photos until the matching log arrives (or vice-versa)
   const photoBuffer = useRef<Map<string, string>>(new Map()); // userId → dataUri
@@ -62,9 +66,33 @@ export default function Frequencia() {
   // ── Load today's history from SQLite on mount ─────────────────────
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
-    db.frequencias.listByDate(today).then(({ data }) => {
+    
+    const fetchAllowedAlunosIds = async () => {
+      if (perfil?.papel === 'PROFESSOR') {
+        const { data } = await db.alunos.listByProfessorUsuarioId(perfil.id);
+        return ((data as any[]) || []).map(a => a.id);
+      }
+      return null;
+    };
+
+    Promise.all([
+      db.frequencias.listByDate(today),
+      fetchAllowedAlunosIds()
+    ]).then(([ { data }, allowedAlunosIds ]) => {
       if (!data || data.length === 0) return;
-      const historicCards: AccessCard[] = (data as any[]).map((row) => {
+      
+      let filteredData = data as any[];
+      if (perfil?.papel === 'DIRETOR' && escolaAtiva) {
+        filteredData = filteredData.filter(d => d.escola_id === escolaAtiva);
+      } else if (perfil?.papel === 'PROFESSOR' && allowedAlunosIds) {
+        filteredData = filteredData.filter(d => allowedAlunosIds.includes(d.aluno_id));
+      }
+
+      if (turmaId) {
+        filteredData = filteredData.filter(d => d.turma_id === turmaId);
+      }
+
+      const historicCards: AccessCard[] = filteredData.map((row) => {
         const horario = row.hora_entrada
           ? String(row.hora_entrada).slice(0, 8)
           : '--:--:--';
@@ -135,40 +163,93 @@ export default function Frequencia() {
         if (rows.length === 0) return;
 
         try {
-          const { data: alunos } = await db.alunos.list();
-          const allAlunos = alunos || [];
+          let alunosData;
+          if (perfil?.papel === 'DIRETOR' && escolaAtiva) {
+            const { data } = await db.alunos.listByEscola(escolaAtiva);
+            alunosData = data;
+          } else if (perfil?.papel === 'PROFESSOR') {
+            const { data } = await db.alunos.listByProfessorUsuarioId(perfil.id);
+            alunosData = data;
+          } else {
+            const { data } = await db.alunos.list();
+            alunosData = data;
+          }
+          const allAlunos = alunosData || [];
 
           for (const log of rows) {
+            // user_id = the ID we registered the user with on the Control iD device.
+            //           This is stored as idface_user_id in our DB.
+            // identifier_id = fixed biometric template ID on the device firmware.
+            //                 It is CONSTANT across all logs and does NOT identify who passed.
             const logUserId = log?.user_id != null ? String(log.user_id) : null;
+
             if (!logUserId) continue;
 
-            const aluno = allAlunos.find(
-              (a) =>
-                String(a.matricula) === logUserId ||
-                (a.idface_user_id != null && String(a.idface_user_id) === logUserId)
-            );
+            // Normalize by stripping leading zeros before comparing, so "07246988416" === "7246988416"
+            const normalizedLogId = logUserId.replace(/^0+/, '') || logUserId;
+
+            // Match by idface_user_id (primary) or matricula (with and without leading zeros)
+            const aluno = allAlunos.find((a: any) => {
+              const normalizedMatricula = String(a.matricula).replace(/^0+/, '') || String(a.matricula);
+              const byIdfaceId = a.idface_user_id != null &&
+                (String(a.idface_user_id) === logUserId || String(a.idface_user_id).replace(/^0+/, '') === normalizedLogId);
+              const byMatricula = normalizedMatricula === normalizedLogId || String(a.matricula) === logUserId;
+              return (byIdfaceId || byMatricula) && (!turmaId || a.turma_id === turmaId);
+            });
+
+            // Se não encontrou o aluno e não for SECRETARIA, ignore o log
+            // pois pode ser alguém de outra escola/turma no qual ele não tem acesso
+            if (!aluno && perfil?.papel !== 'SECRETARIA') {
+              continue;
+            }
 
             const horario = nowHMS();
             const [hh, mm] = horario.split(':').map(Number);
             const nowMin = hh * 60 + mm;
 
-            const limiteMin = timeToMin((aluno as any)?.limite_max);
-            const fimMin = timeToMin((aluno as any)?.horario_fim);
+            // Determine status using turma's horario_inicio (same logic as TurmaDetalhe).
+            const horarioInicio = (aluno as any)?.horario_inicio ?? null;
+            const limiteHoraMin = timeToMin(horarioInicio);
             const status: AccessCard['status'] =
               !aluno
                 ? 'acesso'
-                : limiteMin != null && nowMin > limiteMin
-                ? 'acesso' // past cutoff — mark as generic access
-                : fimMin != null && nowMin > fimMin
+                : limiteHoraMin != null && nowMin > limiteHoraMin
                 ? 'atrasado'
                 : 'presente';
 
-            const photo = photoBuffer.current.get(logUserId) ?? aluno?.avatar_url ?? null;
+            // ── Persist to SQLite ──────────────────────────────────────
+            if (aluno) {
+              const today = new Date().toISOString().slice(0, 10);
+              // Avoid duplicate records: only insert if no entry exists for this student today.
+              const { data: existing } = await db.frequencias.listByTurmaAndDate(
+                aluno.turma_id ?? '',
+                today
+              );
+              const alreadyRecorded = (existing as any[] | null)?.some(
+                (f: any) => f.aluno_id === aluno.id
+              );
+              if (!alreadyRecorded) {
+                await db.frequencias.insert({
+                  aluno_id: aluno.id,
+                  turma_id: aluno.turma_id ?? null,
+                  data: today,
+                  hora_entrada: horario,
+                  status,
+                  dispositivo_id: log?.device_id ?? null,
+                });
+              }
+            }
+
+            const lookupId = logUserId ?? '';
+            const proxyUrl = aluno?.idface_user_id
+                ? `http://localhost:3000/api/device/photo/${aluno.idface_user_id}`
+                : null;
+            const photo = photoBuffer.current.get(lookupId) ?? proxyUrl;
 
             const card: AccessCard = {
-              id: `${logUserId}-${Date.now()}`,
-              nome: aluno?.nome_completo ?? `Matrícula ${logUserId}`,
-              matricula: aluno?.matricula ?? logUserId,
+              id: `${lookupId}-${Date.now()}`,
+              nome: aluno?.nome_completo ?? `Matrícula ${lookupId}`,
+              matricula: aluno?.matricula ?? lookupId,
               avatarUrl: photo,
               horario,
               status,

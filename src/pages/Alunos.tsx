@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { type AlunoRow, getAlunoColumns } from '@/components/alunos/AlunoColumns';
 import { ResponsavelTab } from '@/components/alunos/ResponsavelTab';
 import { BiometriaTab } from '@/components/alunos/BiometriaTab';
+import { useAuthStore } from '@/stores/authStore';
 import { Trash2 } from 'lucide-react';
 
 interface Serie { id: string; nome: string; escola_id: string; horario_inicio: string | null; tolerancia_min: number | null; limite_max: string | null; }
@@ -45,6 +46,7 @@ export default function Alunos() {
   const [escolas, setEscolas] = useState<Escola[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AlunoRow | null>(null);
+  const [pendingResp, setPendingResp] = useState<{ id: string; nome: string } | null>(null);
   const [form, setForm] = useState({
     nome_completo: '', matricula: '', data_nascimento: '',
     escola_id: '', serie_id: '', turma_id: '',
@@ -52,7 +54,20 @@ export default function Alunos() {
   });
 
   const load = async () => {
-    const { data } = await db.alunos.list();
+    const { perfil, escolaAtiva } = useAuthStore.getState();
+    let data;
+    
+    if (perfil?.papel === 'DIRETOR' && escolaAtiva) {
+      const res = await db.alunos.listByEscola(escolaAtiva);
+      data = res.data;
+    } else if (perfil?.papel === 'PROFESSOR') {
+      const res = await db.alunos.listByProfessorUsuarioId(perfil.id);
+      data = res.data;
+    } else {
+      const res = await db.alunos.list();
+      data = res.data;
+    }
+
     const rows = (data as AlunoRow[]) || [];
 
     // Calcula a frequência real do mês atual para cada aluno
@@ -81,6 +96,7 @@ export default function Alunos() {
 
   const openNew = () => {
     setEditing(null);
+    setPendingResp(null);
     setForm({ nome_completo: '', matricula: '', data_nascimento: '', escola_id: '', serie_id: '', turma_id: '', resp_nome: '', resp_cpf: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe' });
     setOpen(true);
   };
@@ -140,6 +156,20 @@ export default function Alunos() {
       });
       const alunoId = inserted.data?.id;
       toast.success('Aluno cadastrado.');
+
+      // Link pending responsável selected in the Responsável tab (before save)
+      if (alunoId && pendingResp) {
+        try {
+          await db.alunoResponsaveis.insert({
+            aluno_id: alunoId,
+            responsavel_id: pendingResp.id,
+            parentesco: form.resp_parentesco || 'Responsavel',
+          });
+        } catch (e) {
+          console.warn('Falha ao vincular responsável pendente:', e);
+        }
+        setPendingResp(null);
+      }
 
       // Sync with the biometric device without blocking UI flow if offline
       try {
@@ -229,7 +259,7 @@ export default function Alunos() {
       <PageHeader title="Alunos" description="Gestão de alunos matriculados" actionLabel="Novo Aluno" onAction={openNew} />
       <DataTable data={alunos} columns={columns} onRowClick={openEdit} searchPlaceholder="Buscar aluno…" />
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={(v) => { setOpen(v); if (!v) setPendingResp(null); }}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader><SheetTitle>{editing ? 'Editar Aluno' : 'Novo Aluno'}</SheetTitle></SheetHeader>
           <Tabs defaultValue="aluno" className="mt-4">
@@ -272,6 +302,7 @@ export default function Alunos() {
                 alunoId={editing?.id}
                 form={form}
                 onFormChange={(updates) => setForm({ ...form, ...updates })}
+                onSelectExisting={(r) => setPendingResp(r)}
               />
             </TabsContent>
             <TabsContent value="biometria"><BiometriaTab aluno={form} /></TabsContent>

@@ -41,6 +41,15 @@ export default function Login() {
     localStorage.setItem('auth_user', JSON.stringify(appUser));
     setUser(appUser);
     await loadPerfil(usuario.auth_id);
+
+    // Contexto Automático para DIRETOR
+    if (usuario.papel === 'DIRETOR') {
+      const { data: diretores } = await db.diretores.listByUsuario(usuario.id);
+      if (diretores && (diretores as any[]).length > 0) {
+        useAuthStore.getState().setEscolaAtiva((diretores as any[])[0].escola_id);
+      }
+    }
+
     navigate('/dashboard');
     setLoading(false);
   };

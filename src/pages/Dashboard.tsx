@@ -64,7 +64,7 @@ export default function Dashboard() {
   const today = format(new Date(), 'yyyy-MM-dd');
   const todayLabel = format(new Date(), "dd 'de' MMMM", { locale: ptBR });
 
-  const [stats, setStats] = useState({ escolas: 0, alunos: 0, professores: 0, diretores: 0 });
+  const [stats, setStats] = useState<any>({ escolas: 0, alunos: 0, professores: 0, diretores: 0, turmas: 0 });
   const [freqHoje, setFreqHoje] = useState({ presentes: 0, atrasados: 0, faltas: 0, total: 0 });
   const [justPendentes, setJustPendentes] = useState(0);
   const [escolasStats, setEscolasStats] = useState<EscolaStats[]>([]);
@@ -74,34 +74,75 @@ export default function Dashboard() {
   useEffect(() => {
     const load = async () => {
       try {
-        // Global counts
-        const { data: counts } = await db.stats.counts();
-        if (counts) setStats(counts);
+        const state = useAuthStore.getState();
+        const currentPerfil = state.perfil;
+        const currentEscola = state.escolaAtiva;
+
+        if (currentPerfil?.papel === 'DIRETOR' && currentEscola) {
+          const { data: counts } = await db.stats.countsByEscola(currentEscola);
+          if (counts) setStats(counts as any);
+        } else if (currentPerfil?.papel === 'PROFESSOR') {
+          const { data: counts } = await db.stats.countsByProfessor(currentPerfil.id);
+          if (counts) setStats(counts as any);
+        } else {
+          // Global counts
+          const { data: counts } = await db.stats.counts();
+          if (counts) setStats(counts as any);
+        }
 
         // Escolas list
         const { data: escolas } = await db.escolas.list();
-        const escolaList = (escolas || []) as any[];
+        let escolaList = (escolas || []) as any[];
+
+        if (currentPerfil?.papel === 'DIRETOR' && currentEscola) {
+          escolaList = escolaList.filter(e => e.id === currentEscola);
+        } else if (currentPerfil?.papel === 'PROFESSOR') {
+          const { data: pescs } = await db.professorEscolas.listByProfessor(currentPerfil.id);
+          const allowedEsc = ((pescs || []) as any[]).map(pe => pe.escola_id);
+          escolaList = escolaList.filter(e => allowedEsc.includes(e.id));
+        }
 
         // Per-escola frequency stats for today
         const escolaStatsArr: EscolaStats[] = [];
         let totalPresentes = 0, totalAtrasados = 0, totalAlunos = 0;
 
-        for (const escola of escolaList) {
-          const { data: freqCount } = await db.frequencias.countByEscola(escola.id, today);
-          const { data: alunoCount } = await db.alunos.countByEscola(escola.id);
-          const fc = freqCount as any || { total: 0, presentes: 0 };
-          const total = Number(alunoCount) || 0;
-          const presentes = fc.presentes || 0;
-          totalPresentes += presentes;
-          totalAtrasados += (fc.total - presentes > 0 ? fc.total - presentes : 0);
-          totalAlunos += total;
-          escolaStatsArr.push({
-            id: escola.id,
-            nome: escola.nome,
-            totalAlunos: total,
-            presentes,
-            freqPct: total > 0 ? Math.round((presentes / total) * 100) : 0,
-          });
+        if (currentPerfil?.papel === 'PROFESSOR') {
+          const { data: turmasFreq } = await db.frequencias.frequenciaHojeByProfessor(currentPerfil.id, today);
+          for (const t of (turmasFreq || []) as any[]) {
+            const presentes = t.presentes || 0;
+            const total = t.total_alunos || 0;
+            const freqReg = t.frequencias_registradas || 0;
+            
+            totalPresentes += presentes;
+            totalAtrasados += (freqReg - presentes > 0 ? freqReg - presentes : 0);
+            totalAlunos += total;
+            
+            escolaStatsArr.push({
+              id: t.turma_id,
+              nome: t.turma_nome,
+              totalAlunos: total,
+              presentes,
+              freqPct: total > 0 ? Math.round((presentes / total) * 100) : 0,
+            });
+          }
+        } else {
+          for (const escola of escolaList) {
+            const { data: freqCount } = await db.frequencias.countByEscola(escola.id, today);
+            const { data: alunoCount } = await db.alunos.countByEscola(escola.id);
+            const fc = freqCount as any || { total: 0, presentes: 0 };
+            const total = Number(alunoCount) || 0;
+            const presentes = fc.presentes || 0;
+            totalPresentes += presentes;
+            totalAtrasados += (fc.total - presentes > 0 ? fc.total - presentes : 0);
+            totalAlunos += total;
+            escolaStatsArr.push({
+              id: escola.id,
+              nome: escola.nome,
+              totalAlunos: total,
+              presentes,
+              freqPct: total > 0 ? Math.round((presentes / total) * 100) : 0,
+            });
+          }
         }
 
         setEscolasStats(escolaStatsArr.sort((a, b) => b.freqPct - a.freqPct));
@@ -125,20 +166,35 @@ export default function Dashboard() {
           .slice(0, 6);
 
         if (todayFreqs.length > 0) {
-          const { data: allAlunos } = await db.alunos.list();
+          let alunosData;
+          if (currentPerfil?.papel === 'DIRETOR' && currentEscola) {
+             const res = await db.alunos.listByEscola(currentEscola);
+             alunosData = res.data;
+          } else if (currentPerfil?.papel === 'PROFESSOR') {
+             const res = await db.alunos.listByProfessorUsuarioId(currentPerfil.id);
+             alunosData = res.data;
+          } else {
+             const res = await db.alunos.list();
+             alunosData = res.data;
+          }
+          const allAlunos = alunosData || [];
+          const allowedAlunosIds = new Set((allAlunos as any[]).map(a => a.id));
+
           const alunosMap = new Map(((allAlunos || []) as any[]).map(a => [a.id, a]));
-          const recentCards: AlunoRecente[] = todayFreqs.map(f => {
-            const a = alunosMap.get(f.aluno_id) as any;
-            return {
-              id: f.id,
-              nome: a?.nome_completo ?? '—',
-              matricula: a?.matricula ?? '—',
-              avatarUrl: a?.avatar_url ?? null,
-              horaEntrada: f.hora_entrada,
-              status: f.status,
-              escolaNome: a?.escola_nome ?? '',
-            };
-          });
+          const recentCards: AlunoRecente[] = todayFreqs
+            .filter(f => allowedAlunosIds.has(f.aluno_id))
+            .map(f => {
+              const a = alunosMap.get(f.aluno_id) as any;
+              return {
+                id: f.id,
+                nome: a?.nome_completo ?? '—',
+                matricula: a?.matricula ?? '—',
+                avatarUrl: a?.avatar_url ?? null,
+                horaEntrada: f.hora_entrada,
+                status: f.status,
+                escolaNome: a?.escola_nome ?? '',
+              };
+            });
           setRecentAccess(recentCards);
         }
       } catch (e) {
@@ -183,10 +239,25 @@ export default function Dashboard() {
 
       {/* Top stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Escolas"       value={stats.escolas}    icon={School}       color="primary"  />
-        <StatCard title="Alunos Ativos" value={stats.alunos}     icon={Users}        color="success"  />
-        <StatCard title="Professores"   value={stats.professores} icon={GraduationCap} color="warning" />
-        <StatCard title="Diretores"     value={stats.diretores}  icon={UserCog}       color="info"    />
+        {perfil?.papel === 'DIRETOR' ? (
+          <>
+            <StatCard title="Alunos da Escola" value={stats.alunos || 0} icon={Users} color="success" />
+            <StatCard title="Professores" value={stats.professores || 0} icon={GraduationCap} color="warning" />
+            <StatCard title="Turmas" value={stats.turmas || 0} icon={School} color="primary" />
+          </>
+        ) : perfil?.papel === 'PROFESSOR' ? (
+          <>
+            <StatCard title="Minhas Turmas" value={stats.turmas || 0} icon={School} color="primary" />
+            <StatCard title="Meus Alunos" value={stats.alunos || 0} icon={Users} color="success" />
+          </>
+        ) : (
+          <>
+            <StatCard title="Escolas" value={stats.escolas || 0} icon={School} color="primary" />
+            <StatCard title="Alunos Ativos" value={stats.alunos || 0} icon={Users} color="success" />
+            <StatCard title="Professores" value={stats.professores || 0} icon={GraduationCap} color="warning" />
+            <StatCard title="Diretores" value={stats.diretores || 0} icon={UserCog} color="info" />
+          </>
+        )}
       </div>
 
       {/* Frequency today summary */}
@@ -238,37 +309,42 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Frequência por escola */}
+        {/* Frequência por escola / turma */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2 flex-row items-center justify-between">
-            <CardTitle className="text-base">Frequência por Escola — Hoje</CardTitle>
-            <Link to="/escolas" className="text-xs text-primary flex items-center gap-1 hover:underline">
+            <CardTitle className="text-base">
+              {perfil?.papel === 'PROFESSOR' ? 'Frequência das Minhas Turmas Hoje' : 'Frequência por Escola — Hoje'}
+            </CardTitle>
+            <Link to={perfil?.papel === 'PROFESSOR' ? '/minhas-turmas' : '/escolas'} className="text-xs text-primary flex items-center gap-1 hover:underline">
               Ver todas <ArrowRight className="h-3 w-3" />
             </Link>
           </CardHeader>
           <CardContent className="space-y-4">
             {escolasStats.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Nenhuma escola cadastrada.</p>
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhum dado disponível.</p>
             ) : (
-              escolasStats.map(escola => (
-                <div key={escola.id}>
+              escolasStats.map(item => (
+                <div key={item.id}>
                   <div className="flex items-center justify-between mb-1">
-                    <Link to={`/escolas/${escola.id}`} className="text-sm font-medium hover:text-primary transition-colors truncate max-w-[60%]">
-                      {escola.nome}
+                    <Link 
+                      to={perfil?.papel === 'PROFESSOR' ? `/frequencia/${item.id}` : `/escolas/${item.id}`} 
+                      className="text-sm font-medium hover:text-primary transition-colors truncate max-w-[60%]"
+                    >
+                      {item.nome}
                     </Link>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
-                      <span>{escola.presentes}/{escola.totalAlunos} alunos</span>
+                      <span>{item.presentes}/{item.totalAlunos} alunos</span>
                       <span className={`font-semibold ${
-                        escola.freqPct >= 85 ? 'text-emerald-600' :
-                        escola.freqPct >= 70 ? 'text-amber-600' : 'text-destructive'
-                      }`}>{escola.freqPct}%</span>
+                        item.freqPct >= 85 ? 'text-emerald-600' :
+                        item.freqPct >= 70 ? 'text-amber-600' : 'text-destructive'
+                      }`}>{item.freqPct}%</span>
                     </div>
                   </div>
                   <Progress
-                    value={escola.freqPct}
+                    value={item.freqPct}
                     className={`h-2 ${
-                      escola.freqPct >= 85 ? '[&>div]:bg-emerald-500' :
-                      escola.freqPct >= 70 ? '[&>div]:bg-amber-500'   : '[&>div]:bg-destructive'
+                      item.freqPct >= 85 ? '[&>div]:bg-emerald-500' :
+                      item.freqPct >= 70 ? '[&>div]:bg-amber-500'   : '[&>div]:bg-destructive'
                     }`}
                   />
                 </div>

@@ -43,7 +43,7 @@ export function BiometriaTab({ aluno }: BiometriaTabProps) {
       }
     });
 
-    return () => socket.disconnect();
+    return () => { socket.disconnect(); };
   }, []);
 
   const handleCapture = async () => {
@@ -120,7 +120,11 @@ export function BiometriaTab({ aluno }: BiometriaTabProps) {
       const response = await fetch('http://localhost:3000/api/capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip: ip_address, internalUserId: String(internalId) })
+        body: JSON.stringify({
+          ip: ip_address,
+          internalUserId: String(internalId),
+          countdown: (configIot.data as any)?.captura_timeout ?? 5,
+        })
       });
 
       if (!response.ok) {

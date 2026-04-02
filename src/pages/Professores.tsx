@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAuthStore } from '@/stores/authStore';
 import { db } from '@/lib/mock-db';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, type Column } from '@/components/shared/DataTable';
@@ -24,10 +25,23 @@ export default function Professores() {
   const [selectedEscolas, setSelectedEscolas] = useState<string[]>([]);
 
   const load = async () => {
-    const { data: profs } = await db.professores.list();
+    const { perfil, escolaAtiva } = useAuthStore.getState();
+    let profs;
+    if (perfil?.papel === 'DIRETOR' && escolaAtiva) {
+      const res = await db.professores.listByEscola(escolaAtiva);
+      profs = res.data;
+    } else {
+      const res = await db.professores.list();
+      profs = res.data;
+    }
     setData((profs as ProfRow[]) || []);
+
     const { data: esc } = await db.escolas.list();
-    setEscolas(((esc || []) as any[]).map(e => ({ id: e.id, nome: e.nome })));
+    let escs = ((esc || []) as any[]).map(e => ({ id: e.id, nome: e.nome }));
+    if (perfil?.papel === 'DIRETOR' && escolaAtiva) {
+      escs = escs.filter(e => e.id === escolaAtiva);
+    }
+    setEscolas(escs);
   };
 
   useEffect(() => { load(); }, []);

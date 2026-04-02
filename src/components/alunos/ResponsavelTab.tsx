@@ -36,9 +36,12 @@ interface ResponsavelTabProps {
     resp_parentesco: string;
   };
   onFormChange: (updates: Partial<ResponsavelTabProps['form']>) => void;
+  /** Called when user picks (or clears) an existing responsavel from search.
+   *  Parent stores this and inserts the link after the aluno is created. */
+  onSelectExisting?: (resp: { id: string; nome: string } | null) => void;
 }
 
-export function ResponsavelTab({ alunoId, form, onFormChange }: ResponsavelTabProps) {
+export function ResponsavelTab({ alunoId, form, onFormChange, onSelectExisting }: ResponsavelTabProps) {
   const [vinculados, setVinculados] = useState<Responsavel[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -213,7 +216,11 @@ export function ResponsavelTab({ alunoId, form, onFormChange }: ResponsavelTabPr
                     <CommandItem
                       key={r.id}
                       value={`${r.nome} ${r.cpf}`}
-                      onSelect={() => { setSelectedResp(r); setSearchOpen(false); }}
+                      onSelect={() => {
+                        setSelectedResp(r);
+                        setSearchOpen(false);
+                        onSelectExisting?.(r);
+                      }}
                       className="flex flex-col items-start gap-0.5"
                     >
                       <span className="font-medium">{r.nome}</span>
@@ -244,6 +251,17 @@ export function ResponsavelTab({ alunoId, form, onFormChange }: ResponsavelTabPr
               {linkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
               Vincular
             </Button>
+          </div>
+        )}
+        {selectedResp && !alunoId && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm flex items-center justify-between gap-2">
+            <span className="text-primary font-medium">✓ {selectedResp.nome} será vinculado ao salvar o aluno.</span>
+            <button
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              onClick={() => { setSelectedResp(null); onSelectExisting?.(null); }}
+            >
+              Remover
+            </button>
           </div>
         )}
       </div>

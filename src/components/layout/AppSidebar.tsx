@@ -27,14 +27,15 @@ const menuByPapel: Record<Papel, NavItem[]> = {
   ],
   DIRETOR: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Séries e Turmas', href: '/series', icon: BookOpen },
+    { label: 'Minha Escola', href: '/minha-escola', icon: School },
+    { label: 'Professores', href: '/professores', icon: GraduationCap },
     { label: 'Alunos', href: '/alunos', icon: Users },
     { label: 'Chamada do Dia', href: '/frequencia', icon: Radio },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
   ],
   PROFESSOR: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Minhas Turmas', href: '/turmas', icon: BookOpen },
+    { label: 'Minhas Turmas', href: '/minhas-turmas', icon: BookOpen },
     { label: 'Alunos', href: '/alunos', icon: Users },
   ],
   RESPONSAVEL: [
@@ -52,9 +53,14 @@ interface Props {
 }
 
 export function AppSidebar({ open, onClose, collapsed, onToggleCollapse }: Props) {
-  const { perfil } = useAuthStore();
+  const { perfil, escolaAtiva } = useAuthStore();
   const location = useLocation();
-  const items = perfil ? menuByPapel[perfil.papel] : [];
+  const items = perfil ? menuByPapel[perfil.papel].map(item => {
+    if (item.label === 'Minha Escola' && escolaAtiva) {
+      return { ...item, href: `/escolas/${escolaAtiva}` };
+    }
+    return item;
+  }) : [];
 
   return (
     <>

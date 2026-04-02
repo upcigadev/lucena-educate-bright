@@ -62,6 +62,9 @@ CREATE TABLE IF NOT EXISTS escolas (
   inep TEXT,
   endereco TEXT,
   telefone TEXT,
+  horario_inicio TEXT,
+  tolerancia_min INTEGER,
+  limite_max TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -167,6 +170,7 @@ CREATE TABLE IF NOT EXISTS escola_iot_config (
   ativo INTEGER NOT NULL DEFAULT 1,
   modo_verificacao TEXT NOT NULL DEFAULT 'entrada',
   ip_address TEXT,
+  captura_timeout INTEGER DEFAULT 5,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -309,6 +313,28 @@ async function initDatabase(): Promise<SqlJsDatabase> {
   } catch (e) {
     // If migration fails, we still want the app to start.
     console.warn('Failed to migrate `alunos` schedule columns:', e);
+  }
+
+  // Migration: add captura_timeout to escola_iot_config if missing.
+  try {
+    const iotInfo = db.exec('PRAGMA table_info(escola_iot_config);');
+    const iotCols: string[] = (iotInfo?.[0]?.values || []).map((row: any[]) => row?.[1]).filter(Boolean);
+    if (!iotCols.includes('captura_timeout')) {
+      db.run('ALTER TABLE escola_iot_config ADD COLUMN captura_timeout INTEGER DEFAULT 5');
+    }
+  } catch (e) {
+    console.warn('Failed to migrate `escola_iot_config.captura_timeout`:', e);
+  }
+
+  // Migration: add schedule columns to escolas if missing.
+  try {
+    const escolaInfo = db.exec('PRAGMA table_info(escolas);');
+    const escolaCols: string[] = (escolaInfo?.[0]?.values || []).map((row: any[]) => row?.[1]).filter(Boolean);
+    if (!escolaCols.includes('horario_inicio')) db.run('ALTER TABLE escolas ADD COLUMN horario_inicio TEXT');
+    if (!escolaCols.includes('tolerancia_min')) db.run('ALTER TABLE escolas ADD COLUMN tolerancia_min INTEGER');
+    if (!escolaCols.includes('limite_max'))     db.run('ALTER TABLE escolas ADD COLUMN limite_max TEXT');
+  } catch (e) {
+    console.warn('Failed to migrate `escolas` schedule columns:', e);
   }
 
   // Seed only if empty

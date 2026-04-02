@@ -7,6 +7,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/stores/authStore';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { getDb } from '@/lib/database';
 import { db } from '@/lib/mock-db';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -25,6 +26,7 @@ import IoTConfig from '@/pages/IoTConfig';
 import Justificativas from '@/pages/Justificativas';
 import Frequencia from '@/pages/Frequencia';
 import NotFound from '@/pages/NotFound';
+import MinhasTurmas from '@/pages/MinhasTurmas';
 
 const queryClient = new QueryClient();
 
@@ -110,16 +112,22 @@ function GlobalDeviceMonitor() {
             const horaAtualMin = timeToMinutes(horaAtual);
 
             if (aluno && (event === undefined || ['6', '7'].includes(String(event)))) {
+              const horarioInicioMin = timeToMinutes((aluno as any).horario_inicio ?? null);
               const limiteMaxMin = timeToMinutes(aluno.limite_max);
-              const horarioFimMin = timeToMinutes(aluno.horario_fim);
 
-              if (horaAtualMin != null && limiteMaxMin != null && horaAtualMin > limiteMaxMin) continue;
+              // Never skip: always persist. Compute status:
+              // - If before or at horario_inicio → presente
+              // - If after horario_inicio but before/at limite_max → atrasado
+              // - If after limite_max → atrasado (still register the access)
+              const status: 'presente' | 'atrasado' =
+                horarioInicioMin != null && horaAtualMin != null && horaAtualMin > horarioInicioMin
+                  ? 'atrasado'
+                  : limiteMaxMin != null && horaAtualMin != null && horaAtualMin > limiteMaxMin
+                  ? 'atrasado'
+                  : 'presente';
 
               const historico = await db.frequencias.listByAlunos([aluno.id], dataDeHoje, dataDeHoje);
               if (!historico.data || historico.data.length === 0) {
-                const status = (horaAtualMin != null && horarioFimMin != null && horaAtualMin > horarioFimMin)
-                  ? 'atrasado' : 'presente';
-
                 await db.frequencias.insert({
                   aluno_id: aluno.id,
                   turma_id: aluno.turma_id,
@@ -256,6 +264,7 @@ function DbInitializer({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -269,16 +278,27 @@ const App = () => (
             <Route path="/" element={<AuthGuard><AppLayout /></AuthGuard>}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
-              <Route path="escolas" element={<Escolas />} />
-              <Route path="escolas/:escolaId" element={<EscolaDetalhe />} />
-              <Route path="escolas/:escolaId/turma/:turmaId" element={<TurmaDetalhe />} />
-              <Route path="diretores" element={<Diretores />} />
-              <Route path="professores" element={<Professores />} />
-              <Route path="alunos" element={<Alunos />} />
-              <Route path="responsaveis" element={<Responsaveis />} />
-              <Route path="iot-config" element={<IoTConfig />} />
-              <Route path="frequencia" element={<Frequencia />} />
-              <Route path="justificativas" element={<Justificativas />} />
+              
+              {/* Only SECRETARIA */}
+              <Route path="escolas" element={<ProtectedRoute allowedRoles={['SECRETARIA']}><Escolas /></ProtectedRoute>} />
+              <Route path="diretores" element={<ProtectedRoute allowedRoles={['SECRETARIA']}><Diretores /></ProtectedRoute>} />
+              <Route path="iot-config" element={<ProtectedRoute allowedRoles={['SECRETARIA']}><IoTConfig /></ProtectedRoute>} />
+              
+              {/* SECRETARIA and DIRETOR */}
+              <Route path="escolas/:escolaId" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR']}><EscolaDetalhe /></ProtectedRoute>} />
+              <Route path="escolas/:escolaId/turma/:turmaId" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR']}><TurmaDetalhe /></ProtectedRoute>} />
+              <Route path="professores" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR']}><Professores /></ProtectedRoute>} />
+              
+              {/* PROFESSOR specific */}
+              <Route path="minhas-turmas" element={<ProtectedRoute allowedRoles={['PROFESSOR']}><MinhasTurmas /></ProtectedRoute>} />
+              
+              {/* SECRETARIA, DIRETOR and PROFESSOR */}
+              <Route path="alunos" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR', 'RESPONSAVEL']}><Alunos /></ProtectedRoute>} />
+              <Route path="frequencia" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR']}><Frequencia /></ProtectedRoute>} />
+              <Route path="frequencia/:turmaId" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR']}><Frequencia /></ProtectedRoute>} />
+              
+              <Route path="responsaveis" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR']}><Responsaveis /></ProtectedRoute>} />
+              <Route path="justificativas" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR', 'RESPONSAVEL']}><Justificativas /></ProtectedRoute>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
