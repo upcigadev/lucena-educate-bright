@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Wifi, WifiOff, Radio, Clock, UserCheck } from 'lucide-react';
 import { db } from '@/lib/mock-db';
 import { useAuthStore } from '@/stores/authStore';
+import { enviarNotificacaoFrequencia } from '@/lib/notification-service';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -236,6 +237,13 @@ export default function Frequencia() {
                   hora_entrada: horario,
                   status,
                   dispositivo_id: log?.device_id ?? null,
+                });
+
+                enviarNotificacaoFrequencia({
+                  aluno_id: String(aluno.id),
+                  hora_entrada: horario,
+                  status,
+                  data: today
                 });
               }
             }

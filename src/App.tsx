@@ -10,6 +10,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { getDb } from '@/lib/database';
 import { db } from '@/lib/mock-db';
+import { enviarNotificacaoFrequencia } from '@/lib/notification-service';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
@@ -27,6 +28,7 @@ import Justificativas from '@/pages/Justificativas';
 import Frequencia from '@/pages/Frequencia';
 import NotFound from '@/pages/NotFound';
 import MinhasTurmas from '@/pages/MinhasTurmas';
+import MeusFilhos from '@/pages/MeusFilhos';
 
 const queryClient = new QueryClient();
 
@@ -135,6 +137,13 @@ function GlobalDeviceMonitor() {
                   hora_entrada: horaAtual,
                   status,
                   dispositivo_id: String(log.device_id || '')
+                });
+
+                enviarNotificacaoFrequencia({
+                  aluno_id: String(aluno.id),
+                  hora_entrada: horaAtual,
+                  status,
+                  data: dataDeHoje
                 });
 
                 const photo = logUserId ? (photoBuffer.get(logUserId) ?? aluno.avatar_url ?? null) : null;
@@ -291,9 +300,12 @@ const App = () => (
               
               {/* PROFESSOR specific */}
               <Route path="minhas-turmas" element={<ProtectedRoute allowedRoles={['PROFESSOR']}><MinhasTurmas /></ProtectedRoute>} />
-              
+
+              {/* RESPONSAVEL specific */}
+              <Route path="meus-filhos" element={<ProtectedRoute allowedRoles={['RESPONSAVEL']}><MeusFilhos /></ProtectedRoute>} />
+
               {/* SECRETARIA, DIRETOR and PROFESSOR */}
-              <Route path="alunos" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR', 'RESPONSAVEL']}><Alunos /></ProtectedRoute>} />
+              <Route path="alunos" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR']}><Alunos /></ProtectedRoute>} />
               <Route path="frequencia" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR']}><Frequencia /></ProtectedRoute>} />
               <Route path="frequencia/:turmaId" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR']}><Frequencia /></ProtectedRoute>} />
               

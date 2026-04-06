@@ -70,6 +70,9 @@ export default function Dashboard() {
   const [escolasStats, setEscolasStats] = useState<EscolaStats[]>([]);
   const [recentAccess, setRecentAccess] = useState<AlunoRecente[]>([]);
   const [loading, setLoading] = useState(true);
+  // RESPONSAVEL-specific
+  interface FilhoDash { id: string; nome: string; turma: string; escola: string; avatarUrl: string | null; freqPct: number; statusHoje: string | null; }
+  const [meusFilhos, setMeusFilhos] = useState<FilhoDash[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -78,6 +81,38 @@ export default function Dashboard() {
         const currentPerfil = state.perfil;
         const currentEscola = state.escolaAtiva;
 
+        // ── RESPONSAVEL: only load their own children ─────────────────
+        if (currentPerfil?.papel === 'RESPONSAVEL') {
+          const { data: filhosData } = await db.alunos.listByResponsavelUsuarioId(currentPerfil.id);
+          const filhos = (filhosData || []) as any[];
+          const filhosDash: FilhoDash[] = [];
+          let totalPresentes = 0, totalAtrasados = 0;
+          for (const f of filhos) {
+            const { data: pct } = await db.frequencias.monthlyPct(f.id);
+            const { data: todayFreqs } = await db.frequencias.listByAlunos([f.id], today, today);
+            const todayEntry = (todayFreqs as any[])?.[0] ?? null;
+            if (todayEntry?.status === 'presente') totalPresentes++;
+            else if (todayEntry?.status === 'atrasado') totalAtrasados++;
+            filhosDash.push({
+              id: f.id,
+              nome: f.nome_completo,
+              turma: f.turma_nome,
+              escola: f.escola_nome,
+              avatarUrl: f.avatar_url ?? null,
+              freqPct: (pct as number) ?? 0,
+              statusHoje: todayEntry?.status ?? null,
+            });
+          }
+          setMeusFilhos(filhosDash);
+          setFreqHoje({ presentes: totalPresentes, atrasados: totalAtrasados, faltas: filhos.length - totalPresentes - totalAtrasados, total: filhos.length });
+          setStats({ alunos: filhos.length });
+          const { data: justs } = await db.justificativas.list();
+          setJustPendentes(((justs || []) as any[]).filter(j => j.status === 'pendente').length);
+          setLoading(false);
+          return;
+        }
+
+        // ── Other roles ────────────────────────────────────────────────
         if (currentPerfil?.papel === 'DIRETOR' && currentEscola) {
           const { data: counts } = await db.stats.countsByEscola(currentEscola);
           if (counts) setStats(counts as any);
@@ -225,6 +260,103 @@ export default function Dashboard() {
     );
   }
 
+  // ── RESPONSAVEL dedicated dashboard ─────────────────────────────────────
+  if (perfil?.papel === 'RESPONSAVEL') {
+    const statusCfgResp: Record<string, { label: string; cls: string }> = {
+      presente:  { label: 'Presente',  cls: 'bg-emerald-500/15 text-emerald-700 border-emerald-200' },
+      atrasado:  { label: 'Atrasado',  cls: 'bg-amber-500/15 text-amber-700 border-amber-200' },
+      falta:     { label: 'Falta',     cls: 'bg-destructive/15 text-destructive border-destructive/20' },
+      justificada: { label: 'Justificada', cls: 'bg-blue-500/15 text-blue-700 border-blue-200' },
+    };
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Olá, {perfil.nome?.split(' ')[0]} 👋</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Acompanhe a frequência dos seus filhos — {todayLabel}</p>
+        </div>
+
+        {/* Summary cards */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard title="Meus Filhos" value={stats.alunos || 0} icon={Users} color="primary" />
+          <StatCard title="Presentes Hoje" value={freqHoje.presentes} icon={CheckCircle2} color="success" />
+          <StatCard title="Faltas Hoje" value={freqHoje.faltas} icon={TrendingDown} color="danger" />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          {/* Per-child frequency */}
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-2 flex-row items-center justify-between">
+              <CardTitle className="text-base">Frequência dos Meus Filhos</CardTitle>
+              <Link to="/meus-filhos" className="text-xs text-primary flex items-center gap-1 hover:underline">
+                Ver detalhes <ArrowRight className="h-3 w-3" />
+              </Link>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {meusFilhos.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhum filho vinculado à sua conta.</p>
+              ) : meusFilhos.map(filho => {
+                const sc = filho.statusHoje ? (statusCfgResp[filho.statusHoje] ?? statusCfgResp.falta) : null;
+                const pct = filho.freqPct;
+                return (
+                  <div key={filho.id} className="flex items-center gap-3 rounded-lg border px-3 py-3">
+                    <Avatar className="h-10 w-10 shrink-0">
+                      <AvatarImage src={filho.avatarUrl || ''} className="object-cover" />
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                        {filho.nome.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium truncate">{filho.nome}</p>
+                        {sc && <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 ${sc.cls}`}>{sc.label}</Badge>}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{filho.escola} · {filho.turma}</p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <Progress value={pct} className="h-1.5 flex-1" />
+                        <span className={`text-xs font-semibold tabular-nums shrink-0 ${
+                          pct >= 85 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : 'text-destructive'
+                        }`}>{pct}%</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          {/* Quick actions */}
+          <div className="space-y-4">
+            <Card className={justPendentes > 0 ? 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20' : ''}>
+              <CardContent className="p-5 flex items-center gap-4">
+                <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 ${justPendentes > 0 ? 'bg-amber-500/10' : 'bg-muted'}`}>
+                  <FileText className={`h-5 w-5 ${justPendentes > 0 ? 'text-amber-600' : 'text-muted-foreground'}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-muted-foreground">Justificativas</p>
+                  <p className="text-2xl font-bold tabular-nums">{justPendentes}</p>
+                  <p className="text-xs text-muted-foreground">pendentes de análise</p>
+                </div>
+                {justPendentes > 0 && <Link to="/justificativas"><AlertTriangle className="h-5 w-5 text-amber-500" /></Link>}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Ações Rápidas</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                <Link to="/meus-filhos" className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors">
+                  <span>Ver Frequência dos Filhos</span><ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </Link>
+                <Link to="/justificativas" className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors">
+                  <span>Enviar Justificativa</span><ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Generic dashboard (SECRETARIA, DIRETOR, PROFESSOR) ───────────────────
   return (
     <div className="space-y-6">
       {/* Greeting */}

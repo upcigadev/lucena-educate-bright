@@ -40,7 +40,7 @@ const menuByPapel: Record<Papel, NavItem[]> = {
   ],
   RESPONSAVEL: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Meus Alunos', href: '/alunos', icon: Users },
+    { label: 'Meus Filhos', href: '/meus-filhos', icon: Users },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
   ],
 };

@@ -175,8 +175,58 @@ export const db = {
       `);
       return ok(rows);
     },
+    getAlunoComResponsaveis: async (alunoId: string) => {
+      // First get the student and school info
+      const alunoRows = await query(`
+        SELECT a.nome_completo as aluno_nome, e.nome as escola_nome
+        FROM alunos a
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE a.id = ? AND a.ativo = 1
+      `, [alunoId]);
+
+      if (alunoRows.length === 0) return ok(null);
+      const aluno = alunoRows[0];
+
+      // Now get the parents
+      const respRows = await query(`
+        SELECT u.nome, r.telefone
+        FROM aluno_responsaveis ar
+        JOIN responsaveis r ON ar.responsavel_id = r.id
+        JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        WHERE ar.aluno_id = ?
+      `, [alunoId]);
+
+      const responsaveis = respRows.map(r => ({
+        nome: r.nome as string,
+        telefone: (r.telefone as string) || ''
+      }));
+
+      return ok({
+        aluno_nome: aluno.aluno_nome as string,
+        escola_nome: aluno.escola_nome as string,
+        responsaveis
+      });
+    },
     listByTurma: async (turmaId: string) => {
       const rows = await query('SELECT * FROM alunos WHERE turma_id = ? AND ativo = 1 ORDER BY nome_completo', [turmaId]);
+      return ok(rows);
+    },
+    listByResponsavelUsuarioId: async (usuarioId: string) => {
+      const rows = await query(`
+        SELECT a.*,
+          COALESCE(t.nome, 'Sem turma') as turma_nome,
+          COALESCE(s.nome, '') as serie_nome,
+          COALESCE(e.nome, '') as escola_nome,
+          ar.parentesco
+        FROM alunos a
+        JOIN aluno_responsaveis ar ON ar.aluno_id = a.id
+        JOIN responsaveis r ON ar.responsavel_id = r.id
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE r.usuario_id = ? AND a.ativo = 1
+        ORDER BY a.nome_completo
+      `, [usuarioId]);
       return ok(rows);
     },
     listByEscola: async (escolaId: string) => {
@@ -680,8 +730,16 @@ export const db = {
     counts: async () => {
       const escolas = await query<{ c: number }>('SELECT COUNT(*) as c FROM escolas');
       const alunos = await query<{ c: number }>('SELECT COUNT(*) as c FROM alunos WHERE ativo = 1');
-      const professores = await query<{ c: number }>('SELECT COUNT(*) as c FROM professores');
-      const diretores = await query<{ c: number }>('SELECT COUNT(*) as c FROM diretores');
+      const professores = await query<{ c: number }>(`
+        SELECT COUNT(*) as c FROM professores p 
+        JOIN usuarios u ON p.usuario_id = u.id 
+        WHERE u.ativo = 1
+      `);
+      const diretores = await query<{ c: number }>(`
+        SELECT COUNT(*) as c FROM diretores d 
+        JOIN usuarios u ON d.usuario_id = u.id 
+        WHERE u.ativo = 1
+      `);
       return ok({
         escolas: escolas[0]?.c || 0,
         alunos: alunos[0]?.c || 0,
@@ -691,7 +749,13 @@ export const db = {
     },
     countsByEscola: async (escolaId: string) => {
       const alunos = await query<{ c: number }>('SELECT COUNT(*) as c FROM alunos WHERE escola_id = ? AND ativo = 1', [escolaId]);
-      const professores = await query<{ c: number }>('SELECT COUNT(DISTINCT pe.professor_id) as c FROM professor_escolas pe WHERE pe.escola_id = ?', [escolaId]);
+      const professores = await query<{ c: number }>(`
+        SELECT COUNT(DISTINCT pe.professor_id) as c 
+        FROM professor_escolas pe 
+        JOIN professores p ON pe.professor_id = p.id
+        JOIN usuarios u ON p.usuario_id = u.id
+        WHERE pe.escola_id = ? AND u.ativo = 1
+      `, [escolaId]);
       const turmas = await query<{ c: number }>('SELECT COUNT(*) as c FROM turmas WHERE escola_id = ?', [escolaId]);
       return ok({
         alunos: alunos[0]?.c || 0,

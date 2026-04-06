@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Search, Link2, UserPlus, Trash2, Loader2 } from 'lucide-react';
 import { cpfMask, validateCPF } from '@/lib/cpf';
 import { toast } from 'sonner';
+import { criarUsuario } from '@/lib/criar-usuario';
 
 interface Responsavel {
   vinculo_id: string;
@@ -110,22 +111,22 @@ export function ResponsavelTab({ alunoId, form, onFormChange, onSelectExisting }
 
     setCreateLoading(true);
     try {
-      // Cria usuário
-      const userResult = await db.usuarios.insert({
-        nome: form.resp_nome.trim(),
-        cpf: cpfClean,
-        papel: 'RESPONSAVEL',
+      // Cria usuário com credenciais
+      const result = await criarUsuario({ 
+        nome: form.resp_nome.trim(), 
+        cpf: cpfClean, 
+        papel: 'RESPONSAVEL', 
+        telefone: form.resp_telefone || undefined 
       });
-      const usuarioId = userResult.data?.id;
-      if (!usuarioId) throw new Error('Falha ao criar usuário.');
 
-      // Cria responsavel
-      const respResult = await db.responsaveis.insert({
-        usuario_id: usuarioId,
-        telefone: form.resp_telefone || null,
-      });
-      const responsavelId = respResult.data?.id;
-      if (!responsavelId) throw new Error('Falha ao criar responsável.');
+      // O criarUsuario já realiza a inserção em `usuarios` E em `responsaveis`.
+      // Precisamos do ID do responsável gerado para vincular.
+      // O criarUsuario devolve { usuarioId } mas não responsavelId se houver inserção embutida,
+      // Espera, vamos checar o que criarUsuario retorna ou só buscar o responsavel criado.
+      const { data: resps } = await db.responsaveis.search(cpfClean);
+      const responsavelId = resps && resps.length > 0 ? resps[0].id : null;
+      
+      if (!responsavelId) throw new Error('Falha ao localizar responsável criado.');
 
       // Se há aluno aberto, vincula imediatamente
       if (alunoId) {
