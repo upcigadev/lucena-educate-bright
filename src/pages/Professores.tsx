@@ -12,7 +12,8 @@ import { maskCPF, cpfMask, validateCPF } from '@/lib/cpf';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { criarUsuario } from '@/lib/criar-usuario';
-import { Trash2 } from 'lucide-react';
+import { Bell, Trash2 } from 'lucide-react';
+import { SendNotificationModal } from '@/components/shared/SendNotificationModal';
 
 interface ProfRow { id: string; usuario_id: string; nome: string; cpf: string; escolas: string[]; turmas: string[]; }
 
@@ -23,6 +24,10 @@ export default function Professores() {
   const [editing, setEditing] = useState<ProfRow | null>(null);
   const [form, setForm] = useState({ nome: '', cpf: '' });
   const [selectedEscolas, setSelectedEscolas] = useState<string[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifDestinatario, setNotifDestinatario] = useState<{ id: string; nome: string } | null>(null);
+
+  const { perfil } = useAuthStore();
 
   const load = async () => {
     const { perfil, escolaAtiva } = useAuthStore.getState();
@@ -100,6 +105,21 @@ export default function Professores() {
           : <span className="text-xs text-muted-foreground">—</span>}
       </div>
     )},
+    { key: 'notif_action', header: '', sortable: false, render: r => (
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-muted-foreground hover:text-primary"
+        title="Enviar Notificação"
+        onClick={(e) => {
+          e.stopPropagation();
+          setNotifDestinatario({ id: r.usuario_id, nome: r.nome });
+          setNotifOpen(true);
+        }}
+      >
+        <Bell className="h-3.5 w-3.5" />
+      </Button>
+    )},
     { key: 'delete_action', header: '', sortable: false, render: r => (
       <button onClick={(e) => { e.stopPropagation(); deactivate(r); }} className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Inativar">
         <Trash2 className="h-4 w-4" />
@@ -132,6 +152,15 @@ export default function Professores() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {notifDestinatario && (
+        <SendNotificationModal
+          open={notifOpen}
+          onClose={() => { setNotifOpen(false); setNotifDestinatario(null); }}
+          destinatarioId={notifDestinatario.id}
+          destinatarioNome={notifDestinatario.nome}
+        />
+      )}
     </div>
   );
 }

@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   papel TEXT NOT NULL,
   ativo INTEGER NOT NULL DEFAULT 1,
   auth_id TEXT UNIQUE,
-  email TEXT,
+  avatar_url TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -153,15 +153,28 @@ CREATE TABLE IF NOT EXISTS frequencias (
 
 CREATE TABLE IF NOT EXISTS justificativas (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-  frequencia_id TEXT NOT NULL REFERENCES frequencias(id),
+  frequencia_id TEXT REFERENCES frequencias(id),
+  aluno_id TEXT REFERENCES alunos(id),
   responsavel_id TEXT NOT NULL REFERENCES responsaveis(id),
   tipo TEXT NOT NULL DEFAULT 'Outros',
   descricao TEXT,
   arquivo_url TEXT,
-  status TEXT NOT NULL DEFAULT 'Pendente',
+  data_inicio TEXT,
+  data_fim TEXT,
+  status TEXT NOT NULL DEFAULT 'pendente',
   observacao_diretor TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS notificacoes (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  remetente_id TEXT NOT NULL REFERENCES usuarios(id),
+  destinatario_id TEXT NOT NULL REFERENCES usuarios(id),
+  titulo TEXT NOT NULL,
+  mensagem TEXT NOT NULL,
+  lida INTEGER NOT NULL DEFAULT 0,
+  data_envio TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS escola_iot_config (
@@ -324,6 +337,28 @@ async function initDatabase(): Promise<SqlJsDatabase> {
     }
   } catch (e) {
     console.warn('Failed to migrate `escola_iot_config.captura_timeout`:', e);
+  }
+
+  // Migration: add avatar_url to usuarios if missing.
+  try {
+    const usrInfo = db.exec('PRAGMA table_info(usuarios);');
+    const usrCols: string[] = (usrInfo?.[0]?.values || []).map((row: any[]) => row?.[1]).filter(Boolean);
+    if (!usrCols.includes('avatar_url')) {
+      db.run('ALTER TABLE usuarios ADD COLUMN avatar_url TEXT');
+    }
+  } catch (e) {
+    console.warn('Failed to migrate `usuarios.avatar_url`:', e);
+  }
+
+  // Migration: add new justificativas columns if missing.
+  try {
+    const justInfo = db.exec('PRAGMA table_info(justificativas);');
+    const justCols: string[] = (justInfo?.[0]?.values || []).map((row: any[]) => row?.[1]).filter(Boolean);
+    if (!justCols.includes('aluno_id')) db.run('ALTER TABLE justificativas ADD COLUMN aluno_id TEXT REFERENCES alunos(id)');
+    if (!justCols.includes('data_inicio')) db.run('ALTER TABLE justificativas ADD COLUMN data_inicio TEXT');
+    if (!justCols.includes('data_fim')) db.run('ALTER TABLE justificativas ADD COLUMN data_fim TEXT');
+  } catch (e) {
+    console.warn('Failed to migrate `justificativas` new columns:', e);
   }
 
   // Migration: add schedule columns to escolas if missing.

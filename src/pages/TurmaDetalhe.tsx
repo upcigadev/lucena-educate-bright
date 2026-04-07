@@ -16,10 +16,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, CalendarIcon, Clock, GraduationCap, Users, TrendingUp, Pencil, Trash2, Plus, X } from 'lucide-react';
+import { ArrowLeft, CalendarIcon, Clock, GraduationCap, Users, TrendingUp, Pencil, Trash2, Plus, X, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
+import { SendNotificationModal } from '@/components/shared/SendNotificationModal';
 
 type StatusType = 'presente' | 'atrasado' | 'falta' | 'justificada';
 
@@ -112,6 +113,10 @@ export default function TurmaDetalhe() {
   // Delete confirmation
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Notification to responsible
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifDestinatario, setNotifDestinatario] = useState<{ id: string; nome: string } | null>(null);
 
   const loadData = useCallback(async () => {
     if (!turmaId || !escolaId) return;
@@ -311,6 +316,31 @@ export default function TurmaDetalhe() {
     justificadas: freqAlunos.filter(a => a.status === 'justificada').length,
   };
 
+  // ── Notify responsible ─────────────────────────────────────
+  const openNotifResponsavel = async (alunoId: string, alunoNome: string) => {
+    try {
+      const vinculosRes = await db.alunoResponsaveis.listByAluno(alunoId);
+      const vinculos = (vinculosRes.data || []) as Array<{ responsavel_id: string; usuario_id?: string; nome?: string }>;
+      if (vinculos.length === 0) {
+        toast.error('Este aluno não possui responsável cadastrado.');
+        return;
+      }
+      // Take first responsible
+      const first = vinculos[0];
+      // The listByAluno query already joins usuarios, so nome and usuario_id are available
+      const respUsuarioId = (first as any).usuario_id ?? null;
+      const respNome = (first as any).nome ?? 'Responsável';
+      if (!respUsuarioId) {
+        toast.error('Responsável sem utilizador vinculado.');
+        return;
+      }
+      setNotifDestinatario({ id: respUsuarioId, nome: respNome });
+      setNotifOpen(true);
+    } catch (e) {
+      toast.error('Erro ao buscar responsável.');
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
   }
@@ -415,6 +445,7 @@ export default function TurmaDetalhe() {
                 <TableHead className="hidden sm:table-cell">Matrícula</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Hora de Entrada</TableHead>
+                <TableHead className="w-10"></TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {freqAlunos.map((aluno, idx) => {
@@ -438,6 +469,17 @@ export default function TurmaDetalhe() {
                         {aluno.horaEntrada
                           ? <span className="inline-flex items-center gap-1 text-sm tabular-nums"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{aluno.horaEntrada}</span>
                           : <span className="text-sm text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-primary"
+                          title="Notificar Responsável"
+                          onClick={(e) => { e.stopPropagation(); openNotifResponsavel(aluno.id, aluno.nome); }}
+                        >
+                          <Bell className="h-3.5 w-3.5" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
@@ -551,6 +593,17 @@ export default function TurmaDetalhe() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Send Notification Modal ───────────────────────────── */}
+      {notifDestinatario && (
+        <SendNotificationModal
+          open={notifOpen}
+          onClose={() => { setNotifOpen(false); setNotifDestinatario(null); }}
+          destinatarioId={notifDestinatario.id}
+          destinatarioNome={notifDestinatario.nome}
+          defaultTitulo="Informação sobre frequência"
+        />
+      )}
     </div>
   );
 }

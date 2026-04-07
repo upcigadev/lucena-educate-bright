@@ -1,5 +1,5 @@
+import { supabase } from '@/integrations/supabase/client';
 import { db } from './mock-db';
-import { generateId } from './database';
 
 interface CriarUsuarioPayload {
   nome: string;
@@ -30,19 +30,37 @@ export async function criarUsuario(payload: CriarUsuarioPayload): Promise<CriarU
     throw new Error('CPF já cadastrado no sistema.');
   }
 
-  const authId = generateId();
+  // Option A: auto-generate email from CPF + fixed temp password
+  const emailLogin = payload.email || `${payload.cpf}@escola.lucena.gov.br`;
+  const senhaTemp = payload.senha || 'lucena2025';
 
-  // Create usuario
-  const { data: usuario } = await db.usuarios.insert({
+  // Create Supabase Auth user (email confirmation should be OFF in Supabase dashboard)
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email: emailLogin,
+    password: senhaTemp,
+    options: {
+      data: { nome: payload.nome, papel: payload.papel },
+    },
+  });
+
+  if (authError || !authData.user) {
+    throw new Error(authError?.message || 'Erro ao criar conta no sistema de autenticação.');
+  }
+
+  const authId = authData.user.id;
+
+  const { data: usuario, error: usrError } = await db.usuarios.insert({
     nome: payload.nome,
     cpf: payload.cpf,
     papel: payload.papel,
     auth_id: authId,
   });
 
-  if (!usuario) throw new Error('Erro ao criar usuário.');
+  if (usrError || !usuario) {
+    throw new Error(usrError?.message || 'Erro ao criar usuário.');
+  }
 
-  const usuarioId = usuario.id;
+  const usuarioId = (usuario as any).id;
 
   // Create role-specific record
   if (payload.papel === 'DIRETOR' && payload.escola_id) {
@@ -51,7 +69,7 @@ export async function criarUsuario(payload: CriarUsuarioPayload): Promise<CriarU
     const { data: prof } = await db.professores.insert({ usuario_id: usuarioId });
     if (prof && payload.escolas_ids) {
       for (const escolaId of payload.escolas_ids) {
-        await db.professorEscolas.insert({ professor_id: prof.id, escola_id: escolaId });
+        await db.professorEscolas.insert({ professor_id: (prof as any).id, escola_id: escolaId });
       }
     }
   } else if (payload.papel === 'RESPONSAVEL') {
@@ -62,8 +80,8 @@ export async function criarUsuario(payload: CriarUsuarioPayload): Promise<CriarU
     success: true,
     usuario_id: usuarioId,
     auth_id: authId,
-    email_login: `${payload.cpf}@sistema.local`,
-    senha_temporaria: 'temp1234',
+    email_login: emailLogin,
+    senha_temporaria: senhaTemp,
     papel: payload.papel,
     role_record: null,
   };

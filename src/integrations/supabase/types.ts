@@ -107,10 +107,15 @@ export type Database = {
       alunos: {
         Row: {
           ativo: boolean
+          avatar_url: string | null
           created_at: string
           data_nascimento: string | null
           escola_id: string
+          horario_fim: string | null
+          horario_inicio: string | null
           id: string
+          idface_user_id: string | null
+          limite_max: string | null
           matricula: string
           nome_completo: string
           responsavel_id: string | null
@@ -118,10 +123,15 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          avatar_url?: string | null
           created_at?: string
           data_nascimento?: string | null
           escola_id: string
+          horario_fim?: string | null
+          horario_inicio?: string | null
           id?: string
+          idface_user_id?: string | null
+          limite_max?: string | null
           matricula: string
           nome_completo: string
           responsavel_id?: string | null
@@ -129,10 +139,15 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          avatar_url?: string | null
           created_at?: string
           data_nascimento?: string | null
           escola_id?: string
+          horario_fim?: string | null
+          horario_inicio?: string | null
           id?: string
+          idface_user_id?: string | null
+          limite_max?: string | null
           matricula?: string
           nome_completo?: string
           responsavel_id?: string | null
@@ -198,23 +213,29 @@ export type Database = {
       escola_iot_config: {
         Row: {
           ativo: boolean
+          captura_timeout: number | null
           created_at: string
           escola_id: string
           id: string
+          ip_address: string | null
           modo_verificacao: string
         }
         Insert: {
           ativo?: boolean
+          captura_timeout?: number | null
           created_at?: string
           escola_id: string
           id?: string
+          ip_address?: string | null
           modo_verificacao?: string
         }
         Update: {
           ativo?: boolean
+          captura_timeout?: number | null
           created_at?: string
           escola_id?: string
           id?: string
+          ip_address?: string | null
           modo_verificacao?: string
         }
         Relationships: [
@@ -231,26 +252,35 @@ export type Database = {
         Row: {
           created_at: string
           endereco: string | null
+          horario_inicio: string | null
           id: string
           inep: string | null
+          limite_max: string | null
           nome: string
           telefone: string | null
+          tolerancia_min: number | null
         }
         Insert: {
           created_at?: string
           endereco?: string | null
+          horario_inicio?: string | null
           id?: string
           inep?: string | null
+          limite_max?: string | null
           nome: string
           telefone?: string | null
+          tolerancia_min?: number | null
         }
         Update: {
           created_at?: string
           endereco?: string | null
+          horario_inicio?: string | null
           id?: string
           inep?: string | null
+          limite_max?: string | null
           nome?: string
           telefone?: string | null
+          tolerancia_min?: number | null
         }
         Relationships: []
       }
@@ -343,10 +373,13 @@ export type Database = {
       }
       justificativas: {
         Row: {
+          aluno_id: string | null
           arquivo_url: string | null
           created_at: string
+          data_fim: string | null
+          data_inicio: string | null
           descricao: string | null
-          frequencia_id: string
+          frequencia_id: string | null
           id: string
           observacao_diretor: string | null
           responsavel_id: string
@@ -355,10 +388,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          aluno_id?: string | null
           arquivo_url?: string | null
           created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
           descricao?: string | null
-          frequencia_id: string
+          frequencia_id?: string | null
           id?: string
           observacao_diretor?: string | null
           responsavel_id: string
@@ -367,10 +403,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          aluno_id?: string | null
           arquivo_url?: string | null
           created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
           descricao?: string | null
-          frequencia_id?: string
+          frequencia_id?: string | null
           id?: string
           observacao_diretor?: string | null
           responsavel_id?: string
@@ -391,6 +430,13 @@ export type Database = {
             columns: ["responsavel_id"]
             isOneToOne: false
             referencedRelation: "responsaveis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "justificativas_aluno_id_fkey"
+            columns: ["aluno_id"]
+            isOneToOne: false
+            referencedRelation: "alunos"
             referencedColumns: ["id"]
           },
         ]
@@ -603,9 +649,9 @@ export type Database = {
         Row: {
           ativo: boolean
           auth_id: string | null
+          avatar_url: string | null
           cpf: string
           created_at: string
-          email: string | null
           id: string
           nome: string
           papel: string
@@ -613,9 +659,9 @@ export type Database = {
         Insert: {
           ativo?: boolean
           auth_id?: string | null
+          avatar_url?: string | null
           cpf: string
           created_at?: string
-          email?: string | null
           id?: string
           nome: string
           papel: string
@@ -623,14 +669,59 @@ export type Database = {
         Update: {
           ativo?: boolean
           auth_id?: string | null
+          avatar_url?: string | null
           cpf?: string
           created_at?: string
-          email?: string | null
           id?: string
           nome?: string
           papel?: string
         }
         Relationships: []
+      }
+      notificacoes: {
+        Row: {
+          data_envio: string
+          destinatario_id: string
+          id: string
+          lida: boolean
+          mensagem: string
+          remetente_id: string
+          titulo: string
+        }
+        Insert: {
+          data_envio?: string
+          destinatario_id: string
+          id?: string
+          lida?: boolean
+          mensagem: string
+          remetente_id: string
+          titulo: string
+        }
+        Update: {
+          data_envio?: string
+          destinatario_id?: string
+          id?: string
+          lida?: boolean
+          mensagem?: string
+          remetente_id?: string
+          titulo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notificacoes_remetente_id_fkey"
+            columns: ["remetente_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notificacoes_destinatario_id_fkey"
+            columns: ["destinatario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

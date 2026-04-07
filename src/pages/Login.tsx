@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/stores/authStore';
-import { db } from '@/lib/mock-db';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +14,6 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { loadPerfil, setUser } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,28 +26,25 @@ export default function Login() {
       return;
     }
 
-    const { data: usuario } = await db.usuarios.getByCpf(cpfClean);
+    // Step 1: resolve email from CPF via Supabase RPC
+    const { data: email, error: rpcError } = await supabase.rpc('get_login_email_by_cpf', { _cpf: cpfClean });
 
-    if (!usuario) {
+    if (rpcError || !email) {
       toast.error('CPF não encontrado ou usuário inativo.');
       setLoading(false);
       return;
     }
 
-    // TODO: Validate password against actual auth system
-    const appUser = { id: usuario.auth_id, email: usuario.email || undefined };
-    localStorage.setItem('auth_user', JSON.stringify(appUser));
-    setUser(appUser);
-    await loadPerfil(usuario.auth_id);
+    // Step 2: sign in with resolved email + password
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-    // Contexto Automático para DIRETOR
-    if (usuario.papel === 'DIRETOR') {
-      const { data: diretores } = await db.diretores.listByUsuario(usuario.id);
-      if (diretores && (diretores as any[]).length > 0) {
-        useAuthStore.getState().setEscolaAtiva((diretores as any[])[0].escola_id);
-      }
+    if (authError) {
+      toast.error('Senha incorreta. Tente novamente.');
+      setLoading(false);
+      return;
     }
 
+    // authStore.onAuthStateChange will load the profile automatically
     navigate('/dashboard');
     setLoading(false);
   };

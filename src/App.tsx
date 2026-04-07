@@ -8,7 +8,6 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/stores/authStore';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
-import { getDb } from '@/lib/database';
 import { db } from '@/lib/mock-db';
 import { enviarNotificacaoFrequencia } from '@/lib/notification-service';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -77,8 +76,8 @@ function GlobalDeviceMonitor() {
         photoBuffer.set(userId, dataUri);
 
         try {
-          const alunosRes = await db.alunos.list();
-          const aluno = (alunosRes.data || []).find(a => String(a.matricula) === userId || (a.idface_user_id && String(a.idface_user_id) === userId));
+          const alunosRes = await db.alunos.getByDeviceUserIds([userId]);
+          const aluno = alunosRes.data?.[0];
           if (aluno?.id) {
             await db.alunos.update(aluno.id, { avatar_url: dataUri });
             queryClient.invalidateQueries({ queryKey: ['alunos'] });
@@ -96,8 +95,9 @@ function GlobalDeviceMonitor() {
           : payload.data ? [payload.data] : [];
         if (logs.length === 0) return;
         try {
-          const alunosRes = await db.alunos.list();
-          const alunos = alunosRes.data || [];
+          const logUserIds = Array.from(new Set(logs.map(l => l?.user_id != null ? String(l.user_id) : null).filter(Boolean)));
+          const alunosRes = await db.alunos.getByDeviceUserIds(logUserIds as string[]);
+          const alunos: any[] = (alunosRes.data as any[]) || [];
 
           for (const log of logs) {
             const logUserId = log?.user_id != null ? String(log.user_id) : null;
@@ -117,10 +117,6 @@ function GlobalDeviceMonitor() {
               const horarioInicioMin = timeToMinutes((aluno as any).horario_inicio ?? null);
               const limiteMaxMin = timeToMinutes(aluno.limite_max);
 
-              // Never skip: always persist. Compute status:
-              // - If before or at horario_inicio → presente
-              // - If after horario_inicio but before/at limite_max → atrasado
-              // - If after limite_max → atrasado (still register the access)
               const status: 'presente' | 'atrasado' =
                 horarioInicioMin != null && horaAtualMin != null && horaAtualMin > horarioInicioMin
                   ? 'atrasado'
@@ -129,7 +125,8 @@ function GlobalDeviceMonitor() {
                   : 'presente';
 
               const historico = await db.frequencias.listByAlunos([aluno.id], dataDeHoje, dataDeHoje);
-              if (!historico.data || historico.data.length === 0) {
+              const historicoData: any[] = (historico.data as any[]) || [];
+              if (historicoData.length === 0) {
                 await db.frequencias.insert({
                   aluno_id: aluno.id,
                   turma_id: aluno.turma_id,
@@ -222,21 +219,10 @@ function GlobalDeviceMonitor() {
 }
 
 function AuthGuard({ children }: { children: ReactNode }) {
-  const { user, loading, setUser, setLoading, loadPerfil } = useAuthStore();
+  const { user, loading } = useAuthStore();
 
-  useEffect(() => {
-    const init = async () => {
-      const stored = localStorage.getItem('auth_user');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setUser(parsed);
-        await loadPerfil(parsed.id);
-      }
-      setLoading(false);
-    };
-    init();
-  }, []);
-
+  // authStore.onAuthStateChange handles session restoration automatically.
+  // We just wait for the initial loading flag to clear.
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -249,40 +235,15 @@ function AuthGuard({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-function DbInitializer({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    getDb().then(() => setReady(true)).catch(err => {
-      console.error('Failed to init SQLite:', err);
-      setReady(true); // Continue anyway
-    });
-  }, []);
-
-  if (!ready) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">Inicializando banco de dados...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return <>{children}</>;
-}
-
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <DbInitializer>
-        <GlobalDeviceMonitor />
-        <BrowserRouter>
-          <Routes>
+      <GlobalDeviceMonitor />
+      <BrowserRouter>
+        <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<AuthGuard><AppLayout /></AuthGuard>}>
               <Route index element={<Navigate to="/dashboard" replace />} />
@@ -313,9 +274,8 @@ const App = () => (
               <Route path="justificativas" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR', 'RESPONSAVEL']}><Justificativas /></ProtectedRoute>} />
             </Route>
             <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </DbInitializer>
+        </Routes>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );
