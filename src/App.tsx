@@ -219,10 +219,26 @@ function GlobalDeviceMonitor() {
 }
 
 function AuthGuard({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuthStore();
+  const { user, loading, setUser, loadPerfil, setLoading } = useAuthStore();
 
-  // authStore.onAuthStateChange handles session restoration automatically.
-  // We just wait for the initial loading flag to clear.
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const stored = localStorage.getItem('auth_user');
+        if (stored) {
+          const authUser = JSON.parse(stored);
+          setUser(authUser);
+          await loadPerfil(authUser.id);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    initAuth();
+  }, [setUser, loadPerfil, setLoading]);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">

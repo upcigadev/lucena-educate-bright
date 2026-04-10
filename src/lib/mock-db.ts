@@ -1,5 +1,5 @@
-// Supabase-backed data access layer (replaces SQLite/sql.js)
-import { supabase } from '@/integrations/supabase/client';
+// SQLite-backed data access layer
+import { query, run, generateId, persist } from './database';
 
 export interface DbResponse<T> {
   data: T | null;
@@ -15,615 +15,870 @@ function err<T>(message: string): DbResponse<T> {
   return { data: null, error: { message } };
 }
 
-// Helper: map nested justificativa to flat shape expected by pages
-function flattenJustificativa(j: any) {
-  return {
-    ...j,
-    aluno_nome: j.alunos?.nome_completo || null,
-    aluno_matricula: j.alunos?.matricula || null,
-    aluno_escola_id: j.alunos?.escola_id || null,
-    data_falta: j.frequencias?.data || null,
-    responsavel_nome: j.responsaveis?.usuarios?.nome || null,
-    alunos: undefined,
-    frequencias: undefined,
-    responsaveis: undefined,
-  };
-}
-
-const JUST_SELECT = '*, alunos(nome_completo, matricula, escola_id), frequencias(data), responsaveis(usuarios(nome))';
-
 // ===== Database API =====
 
 export const db = {
   escolas: {
     list: async () => {
-      const { data, error } = await supabase.from('escolas').select('*').order('nome');
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM escolas ORDER BY nome');
+      return ok(rows);
     },
     getById: async (id: string) => {
-      const { data, error } = await supabase.from('escolas').select('*').eq('id', id).maybeSingle();
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM escolas WHERE id = ?', [id]);
+      return ok(rows[0] || null);
     },
     insert: async (data: { nome: string; inep?: string | null; endereco?: string | null; telefone?: string | null }) => {
-      const { data: row, error } = await supabase.from('escolas').insert(data).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+      const id = generateId();
+      await run('INSERT INTO escolas (id, nome, inep, endereco, telefone) VALUES (?, ?, ?, ?, ?)',
+        [id, data.nome, data.inep || null, data.endereco || null, data.telefone || null]);
+      return ok({ id });
     },
     update: async (id: string, data: { nome?: string; inep?: string | null; endereco?: string | null; telefone?: string | null; horario_inicio?: string | null; tolerancia_min?: number | null; limite_max?: string | null }) => {
-      const { error } = await supabase.from('escolas').update(data).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (data.nome !== undefined) { sets.push('nome = ?'); vals.push(data.nome); }
+      if (data.inep !== undefined) { sets.push('inep = ?'); vals.push(data.inep); }
+      if (data.endereco !== undefined) { sets.push('endereco = ?'); vals.push(data.endereco); }
+      if (data.telefone !== undefined) { sets.push('telefone = ?'); vals.push(data.telefone); }
+      if (data.horario_inicio !== undefined) { sets.push('horario_inicio = ?'); vals.push(data.horario_inicio); }
+      if (data.tolerancia_min !== undefined) { sets.push('tolerancia_min = ?'); vals.push(data.tolerancia_min); }
+      if (data.limite_max !== undefined) { sets.push('limite_max = ?'); vals.push(data.limite_max); }
+      if (sets.length > 0) {
+        vals.push(id);
+        await run(`UPDATE escolas SET ${sets.join(', ')} WHERE id = ?`, vals);
+      }
+      return ok(null);
     },
+    /** Propagate schedule to all series and turmas of a school */
     applyScheduleToAll: async (escolaId: string, horario_inicio: string | null, tolerancia_min: number | null, limite_max: string | null) => {
-      await supabase.from('series').update({ horario_inicio, tolerancia_min, limite_max }).eq('escola_id', escolaId);
-      await supabase.from('turmas').update({ horario_inicio, tolerancia_min, limite_max }).eq('escola_id', escolaId);
+      await run('UPDATE series SET horario_inicio = ?, tolerancia_min = ?, limite_max = ? WHERE escola_id = ?',
+        [horario_inicio, tolerancia_min, limite_max, escolaId]);
+      await run('UPDATE turmas SET horario_inicio = ?, tolerancia_min = ?, limite_max = ? WHERE escola_id = ?',
+        [horario_inicio, tolerancia_min, limite_max, escolaId]);
       return ok(null);
     },
   },
 
   series: {
     listByEscola: async (escolaId: string) => {
-      const { data, error } = await supabase.from('series').select('*').eq('escola_id', escolaId).order('nome');
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM series WHERE escola_id = ? ORDER BY nome', [escolaId]);
+      return ok(rows);
     },
     insert: async (data: { nome: string; escola_id: string; horario_inicio?: string | null; tolerancia_min?: number | null; limite_max?: string | null }) => {
-      const { data: row, error } = await supabase.from('series').insert({
-        nome: data.nome,
-        escola_id: data.escola_id,
-        horario_inicio: data.horario_inicio || '07:00',
-        tolerancia_min: data.tolerancia_min ?? 15,
-        limite_max: data.limite_max || '07:30',
-      }).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+      const id = generateId();
+      await run('INSERT INTO series (id, nome, escola_id, horario_inicio, tolerancia_min, limite_max) VALUES (?, ?, ?, ?, ?, ?)',
+        [id, data.nome, data.escola_id, data.horario_inicio || '07:00', data.tolerancia_min ?? 15, data.limite_max || '07:30']);
+      return ok({ id });
     },
     update: async (id: string, data: { horario_inicio?: string | null; tolerancia_min?: number | null; limite_max?: string | null }) => {
-      const { error } = await supabase.from('series').update(data).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (data.horario_inicio !== undefined) { sets.push('horario_inicio = ?'); vals.push(data.horario_inicio); }
+      if (data.tolerancia_min !== undefined) { sets.push('tolerancia_min = ?'); vals.push(data.tolerancia_min); }
+      if (data.limite_max !== undefined) { sets.push('limite_max = ?'); vals.push(data.limite_max); }
+      if (sets.length > 0) { vals.push(id); await run(`UPDATE series SET ${sets.join(', ')} WHERE id = ?`, vals); }
+      return ok(null);
     },
     delete: async (serieId: string) => {
-      const { data: turmas } = await supabase.from('turmas').select('id').eq('serie_id', serieId);
-      for (const turma of turmas || []) {
-        await supabase.from('alunos').update({ turma_id: null }).eq('turma_id', turma.id);
-        await supabase.from('turma_professores').delete().eq('turma_id', turma.id);
-        await supabase.from('turmas').delete().eq('id', turma.id);
+      // Get all turmas in this serie
+      const turmasNaSerie = await query<{ id: string }>('SELECT id FROM turmas WHERE serie_id = ?', [serieId]);
+      // For each turma: unassign students and remove professor links, then delete the turma
+      for (const turma of turmasNaSerie) {
+        await run('UPDATE alunos SET turma_id = NULL WHERE turma_id = ?', [turma.id]);
+        await run('DELETE FROM turma_professores WHERE turma_id = ?', [turma.id]);
+        await run('DELETE FROM turmas WHERE id = ?', [turma.id]);
       }
-      await supabase.from('series').delete().eq('id', serieId);
+      // Finally delete the serie
+      await run('DELETE FROM series WHERE id = ?', [serieId]);
       return ok(null);
     },
   },
 
   turmas: {
     listByEscola: async (escolaId: string) => {
-      const { data, error } = await supabase.from('turmas').select('*').eq('escola_id', escolaId).order('nome');
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM turmas WHERE escola_id = ? ORDER BY nome', [escolaId]);
+      return ok(rows);
     },
     listByProfessor: async (usuarioId: string) => {
-      const { data: prof } = await supabase.from('professores').select('id').eq('usuario_id', usuarioId).maybeSingle();
-      if (!prof) return ok([]);
-      const { data, error } = await supabase
-        .from('turma_professores').select('turmas(*, series(nome), escolas(nome))')
-        .eq('professor_id', prof.id);
-      if (error) return err(error.message);
-      return ok((data || []).map((tp: any) => ({
-        ...tp.turmas,
-        serie_nome: tp.turmas?.series?.nome || '',
-        escola_nome: tp.turmas?.escolas?.nome || '',
-      })));
+      const rows = await query(`
+        SELECT t.*, s.nome as serie_nome, e.nome as escola_nome
+        FROM turmas t
+        JOIN turma_professores tp ON t.id = tp.turma_id
+        JOIN professores p ON tp.professor_id = p.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON t.escola_id = e.id
+        WHERE p.usuario_id = ?
+        ORDER BY t.nome
+      `, [usuarioId]);
+      return ok(rows);
     },
     listAll: async () => {
-      const { data, error } = await supabase.from('turmas').select('*').order('nome');
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM turmas ORDER BY nome');
+      return ok(rows);
     },
     getById: async (id: string) => {
-      const { data, error } = await supabase.from('turmas').select('*').eq('id', id).maybeSingle();
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM turmas WHERE id = ?', [id]);
+      return ok(rows[0] || null);
     },
     insert: async (data: { nome: string; serie_id: string; escola_id: string; sala?: string | null; horario_inicio?: string | null; tolerancia_min?: number | null; limite_max?: string | null }) => {
-      const { data: dup } = await supabase.from('turmas').select('id').eq('nome', data.nome).eq('escola_id', data.escola_id).maybeSingle();
-      if (dup) throw new Error(`Turma "${data.nome}" já existe nesta escola.`);
-      const { data: row, error } = await supabase.from('turmas').insert(data).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+      // Block duplicates: same name in same school
+      const dup = await query<{ id: string }>(
+        'SELECT id FROM turmas WHERE nome = ? AND escola_id = ? LIMIT 1',
+        [data.nome, data.escola_id]
+      );
+      if (dup.length > 0) {
+        throw new Error(`Turma "${data.nome}" já existe nesta escola.`);
+      }
+      const id = generateId();
+      await run('INSERT INTO turmas (id, nome, serie_id, escola_id, sala, horario_inicio, tolerancia_min, limite_max) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, data.nome, data.serie_id, data.escola_id, data.sala || null, data.horario_inicio || null, data.tolerancia_min ?? null, data.limite_max || null]);
+      return ok({ id });
     },
     update: async (id: string, data: { nome?: string; sala?: string | null; horario_inicio?: string | null; tolerancia_min?: number | null; limite_max?: string | null }) => {
-      const { error } = await supabase.from('turmas').update(data).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (data.nome !== undefined) { sets.push('nome = ?'); vals.push(data.nome); }
+      if (data.sala !== undefined) { sets.push('sala = ?'); vals.push(data.sala); }
+      if (data.horario_inicio !== undefined) { sets.push('horario_inicio = ?'); vals.push(data.horario_inicio); }
+      if (data.tolerancia_min !== undefined) { sets.push('tolerancia_min = ?'); vals.push(data.tolerancia_min); }
+      if (data.limite_max !== undefined) { sets.push('limite_max = ?'); vals.push(data.limite_max); }
+      if (sets.length > 0) {
+        vals.push(id);
+        await run(`UPDATE turmas SET ${sets.join(', ')} WHERE id = ?`, vals);
+      }
+      return ok(null);
     },
     delete: async (id: string) => {
-      await supabase.from('alunos').update({ turma_id: null }).eq('turma_id', id);
-      await supabase.from('turma_professores').delete().eq('turma_id', id);
-      const { error } = await supabase.from('turmas').delete().eq('id', id);
-      return error ? err(error.message) : ok(null);
+      // Unassign students from this turma
+      await run('UPDATE alunos SET turma_id = NULL WHERE turma_id = ?', [id]);
+      // Remove professor links
+      await run('DELETE FROM turma_professores WHERE turma_id = ?', [id]);
+      // Delete the turma itself
+      await run('DELETE FROM turmas WHERE id = ?', [id]);
+      return ok(null);
     },
   },
 
   alunos: {
     list: async () => {
-      const { data, error } = await supabase
-        .from('alunos').select('*, turmas(nome, series(nome)), escolas(nome)')
-        .eq('ativo', true).order('nome_completo');
-      if (error) return err(error.message);
-      return ok((data || []).map((a: any) => ({
-        ...a,
-        turma_nome: a.turmas?.nome || 'Sem turma',
-        serie_nome: a.turmas?.series?.nome || '',
-        escola_nome: a.escolas?.nome || '',
-        turmas: undefined, escolas: undefined,
-      })));
+      const rows = await query(`
+        SELECT a.*, 
+          COALESCE(t.nome, 'Sem turma') as turma_nome,
+          COALESCE(s.nome, '') as serie_nome,
+          COALESCE(e.nome, '') as escola_nome
+        FROM alunos a
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE a.ativo = 1
+        ORDER BY a.nome_completo
+      `);
+      return ok(rows);
     },
     getAlunoComResponsaveis: async (alunoId: string) => {
-      const { data: aluno } = await supabase.from('alunos').select('nome_completo, escolas(nome)').eq('id', alunoId).eq('ativo', true).maybeSingle();
-      if (!aluno) return ok(null);
-      const { data: links } = await supabase.from('aluno_responsaveis').select('responsaveis(telefone, usuarios(nome))').eq('aluno_id', alunoId);
-      const responsaveis = (links || []).map((ar: any) => ({ nome: ar.responsaveis?.usuarios?.nome || '', telefone: ar.responsaveis?.telefone || '' }));
-      return ok({ aluno_nome: aluno.nome_completo, escola_nome: (aluno as any).escolas?.nome || '', responsaveis });
+      // First get the student and school info
+      const alunoRows = await query(`
+        SELECT a.nome_completo as aluno_nome, e.nome as escola_nome
+        FROM alunos a
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE a.id = ? AND a.ativo = 1
+      `, [alunoId]);
+
+      if (alunoRows.length === 0) return ok(null);
+      const aluno = alunoRows[0];
+
+      // Now get the parents
+      const respRows = await query(`
+        SELECT u.nome, r.telefone
+        FROM aluno_responsaveis ar
+        JOIN responsaveis r ON ar.responsavel_id = r.id
+        JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        WHERE ar.aluno_id = ?
+      `, [alunoId]);
+
+      const responsaveis = respRows.map(r => ({
+        nome: r.nome as string,
+        telefone: (r.telefone as string) || ''
+      }));
+
+      return ok({
+        aluno_nome: aluno.aluno_nome as string,
+        escola_nome: aluno.escola_nome as string,
+        responsaveis
+      });
     },
     listByTurma: async (turmaId: string) => {
-      const { data, error } = await supabase.from('alunos').select('*').eq('turma_id', turmaId).eq('ativo', true).order('nome_completo');
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM alunos WHERE turma_id = ? AND ativo = 1 ORDER BY nome_completo', [turmaId]);
+      return ok(rows);
     },
     listByResponsavelUsuarioId: async (usuarioId: string) => {
-      const { data, error } = await supabase
-        .from('alunos').select('*, turmas(nome, series(nome)), escolas(nome), aluno_responsaveis!inner(parentesco, responsaveis!inner(usuario_id))')
-        .eq('ativo', true).eq('aluno_responsaveis.responsaveis.usuario_id', usuarioId).order('nome_completo');
-      if (error) {
-        // fallback: manual join
-        const { data: resp } = await supabase.from('responsaveis').select('id').eq('usuario_id', usuarioId).maybeSingle();
-        if (!resp) return ok([]);
-        const { data: links } = await supabase.from('aluno_responsaveis').select('aluno_id, parentesco').eq('responsavel_id', resp.id);
-        const ids = (links || []).map((l: any) => l.aluno_id);
-        if (ids.length === 0) return ok([]);
-        const { data: a2 } = await supabase.from('alunos').select('*, turmas(nome, series(nome)), escolas(nome)').in('id', ids).eq('ativo', true).order('nome_completo');
-        return ok((a2 || []).map((a: any) => ({ ...a, turma_nome: a.turmas?.nome || 'Sem turma', serie_nome: a.turmas?.series?.nome || '', escola_nome: a.escolas?.nome || '', turmas: undefined, escolas: undefined })));
-      }
-      return ok((data || []).map((a: any) => ({ ...a, turma_nome: a.turmas?.nome || 'Sem turma', serie_nome: a.turmas?.series?.nome || '', escola_nome: a.escolas?.nome || '', turmas: undefined, escolas: undefined, aluno_responsaveis: undefined })));
+      const rows = await query(`
+        SELECT a.*,
+          COALESCE(t.nome, 'Sem turma') as turma_nome,
+          COALESCE(s.nome, '') as serie_nome,
+          COALESCE(e.nome, '') as escola_nome,
+          ar.parentesco
+        FROM alunos a
+        JOIN aluno_responsaveis ar ON ar.aluno_id = a.id
+        JOIN responsaveis r ON ar.responsavel_id = r.id
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE r.usuario_id = ? AND a.ativo = 1
+        ORDER BY a.nome_completo
+      `, [usuarioId]);
+      return ok(rows);
     },
     listByEscola: async (escolaId: string) => {
-      const { data, error } = await supabase
-        .from('alunos').select('*, turmas(nome, series(nome)), escolas(nome)')
-        .eq('escola_id', escolaId).eq('ativo', true).order('nome_completo');
-      if (error) return err(error.message);
-      return ok((data || []).map((a: any) => ({ ...a, turma_nome: a.turmas?.nome || 'Sem turma', serie_nome: a.turmas?.series?.nome || '', escola_nome: a.escolas?.nome || '', turmas: undefined, escolas: undefined })));
+      const rows = await query(`
+        SELECT a.*, 
+          COALESCE(t.nome, 'Sem turma') as turma_nome,
+          COALESCE(s.nome, '') as serie_nome,
+          COALESCE(e.nome, '') as escola_nome
+        FROM alunos a
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE a.escola_id = ? AND a.ativo = 1
+        ORDER BY a.nome_completo
+      `, [escolaId]);
+      return ok(rows);
     },
     listByProfessorUsuarioId: async (usuarioId: string) => {
-      const { data: prof } = await supabase.from('professores').select('id').eq('usuario_id', usuarioId).maybeSingle();
-      if (!prof) return ok([]);
-      const { data: turmaLinks } = await supabase.from('turma_professores').select('turma_id').eq('professor_id', prof.id);
-      const turmaIds = (turmaLinks || []).map((t: any) => t.turma_id);
-      if (turmaIds.length === 0) return ok([]);
-      const { data, error } = await supabase
-        .from('alunos').select('*, turmas(nome, series(nome)), escolas(nome)')
-        .in('turma_id', turmaIds).eq('ativo', true).order('nome_completo');
-      if (error) return err(error.message);
-      return ok((data || []).map((a: any) => ({ ...a, turma_nome: a.turmas?.nome || 'Sem turma', serie_nome: a.turmas?.series?.nome || '', escola_nome: a.escolas?.nome || '', turmas: undefined, escolas: undefined })));
+      const rows = await query(`
+        SELECT DISTINCT a.*, 
+          COALESCE(t.nome, 'Sem turma') as turma_nome,
+          COALESCE(s.nome, '') as serie_nome,
+          COALESCE(e.nome, '') as escola_nome
+        FROM alunos a
+        JOIN turma_professores tp ON a.turma_id = tp.turma_id
+        JOIN professores p ON tp.professor_id = p.id
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE p.usuario_id = ? AND a.ativo = 1
+        ORDER BY a.nome_completo
+      `, [usuarioId]);
+      return ok(rows);
     },
     countByEscola: async (escolaId: string) => {
-      const { count, error } = await supabase.from('alunos').select('id', { count: 'exact', head: true }).eq('escola_id', escolaId).eq('ativo', true);
-      return error ? err(error.message) : ok(count || 0);
+      const rows = await query<{ c: number }>('SELECT COUNT(*) as c FROM alunos WHERE escola_id = ? AND ativo = 1', [escolaId]);
+      return ok(rows[0]?.c || 0);
     },
     insert: async (data: { nome_completo: string; matricula: string; data_nascimento?: string | null; escola_id: string; turma_id?: string | null; horario_inicio?: string | null; horario_fim?: string | null; limite_max?: string | null; idface_user_id?: string | null; avatar_url?: string | null }) => {
-      const { data: existing } = await supabase.from('alunos').select('id').eq('matricula', data.matricula).maybeSingle();
-      if (existing) {
-        const { error } = await supabase.from('alunos').update({ ...data, ativo: true }).eq('id', existing.id);
-        return error ? err(error.message) : ok({ id: existing.id });
+      // Upsert: se já existir um aluno com essa matrícula (mesmo inativo), reativa e atualiza.
+      const existing = await query<{ id: string }>('SELECT id FROM alunos WHERE matricula = ? LIMIT 1', [data.matricula]);
+      if (existing.length > 0) {
+        const id = existing[0].id;
+        await run(
+          `UPDATE alunos SET nome_completo=?, data_nascimento=?, escola_id=?, turma_id=?,
+           horario_inicio=?, horario_fim=?, limite_max=?, idface_user_id=?, avatar_url=?, ativo=1
+           WHERE id=?`,
+          [
+            data.nome_completo,
+            data.data_nascimento || null,
+            data.escola_id,
+            data.turma_id || null,
+            data.horario_inicio || null,
+            data.horario_fim || null,
+            data.limite_max || null,
+            data.idface_user_id || null,
+            data.avatar_url || null,
+            id,
+          ]
+        );
+        return ok({ id });
       }
-      const { data: row, error } = await supabase.from('alunos').insert({ ...data, ativo: true }).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+      const id = generateId();
+      await run(
+        'INSERT INTO alunos (id, nome_completo, matricula, data_nascimento, escola_id, turma_id, horario_inicio, horario_fim, limite_max, idface_user_id, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          id,
+          data.nome_completo,
+          data.matricula,
+          data.data_nascimento || null,
+          data.escola_id,
+          data.turma_id || null,
+          data.horario_inicio || null,
+          data.horario_fim || null,
+          data.limite_max || null,
+          data.idface_user_id || null,
+          data.avatar_url || null,
+        ]
+      );
+      return ok({ id });
     },
     update: async (id: string, data: { nome_completo?: string; data_nascimento?: string | null; turma_id?: string | null; escola_id?: string; horario_inicio?: string | null; horario_fim?: string | null; limite_max?: string | null; idface_user_id?: string | null; avatar_url?: string | null }) => {
-      const { error } = await supabase.from('alunos').update(data).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (data.nome_completo !== undefined) { sets.push('nome_completo = ?'); vals.push(data.nome_completo); }
+      if (data.data_nascimento !== undefined) { sets.push('data_nascimento = ?'); vals.push(data.data_nascimento); }
+      if (data.turma_id !== undefined) { sets.push('turma_id = ?'); vals.push(data.turma_id); }
+      if (data.escola_id !== undefined) { sets.push('escola_id = ?'); vals.push(data.escola_id); }
+      if (data.horario_inicio !== undefined) { sets.push('horario_inicio = ?'); vals.push(data.horario_inicio); }
+      if (data.horario_fim !== undefined) { sets.push('horario_fim = ?'); vals.push(data.horario_fim); }
+      if (data.limite_max !== undefined) { sets.push('limite_max = ?'); vals.push(data.limite_max); }
+      if (data.idface_user_id !== undefined) { sets.push('idface_user_id = ?'); vals.push(data.idface_user_id); }
+      if (data.avatar_url !== undefined) { sets.push('avatar_url = ?'); vals.push(data.avatar_url); }
+      if (sets.length > 0) {
+        vals.push(id);
+        await run(`UPDATE alunos SET ${sets.join(', ')} WHERE id = ?`, vals);
+      }
+      return ok(null);
     },
     getByMatricula: async (matricula: string, escolaId?: string) => {
-      let q = supabase.from('alunos').select('*').eq('matricula', matricula).eq('ativo', true);
-      if (escolaId) q = q.eq('escola_id', escolaId);
-      const { data, error } = await q.maybeSingle();
-      return error ? err(error.message) : ok(data);
+      const rows = await query(
+        `SELECT * FROM alunos WHERE matricula = ? AND ativo = 1 AND (${escolaId ? 'escola_id = ?' : '1=1'}) LIMIT 1`,
+        escolaId ? [matricula, escolaId] : [matricula]
+      );
+      return ok(rows[0] || null);
     },
+    // Soft-delete: seta ativo = 0. Nunca deleta fisicamente.
     deactivate: async (id: string) => {
-      const { error } = await supabase.from('alunos').update({ ativo: false }).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      await run('UPDATE alunos SET ativo = 0 WHERE id = ?', [id]);
+      return ok(null);
     },
     getByDeviceUserIds: async (userIds: string[]) => {
       if (!userIds || userIds.length === 0) return ok([]);
-      const safeIds = userIds.map(id => `"${id}"`).join(',');
-      const filter = `matricula.in.(${safeIds}),idface_user_id.in.(${safeIds})`;
-      const { data, error } = await supabase
-        .from('alunos')
-        .select('*, turmas(nome, series(nome)), escolas(nome)')
-        .or(filter)
-        .eq('ativo', true);
-      if (error) return err(error.message);
-      return ok((data || []).map((a: any) => ({
-        ...a,
-        turma_nome: a.turmas?.nome || 'Sem turma',
-        serie_nome: a.turmas?.series?.nome || '',
-        escola_nome: a.escolas?.nome || '',
-        turmas: undefined, escolas: undefined,
-        aluno_responsaveis: undefined
-      })));
+      const placeholders = userIds.map(() => '?').join(',');
+      const rows = await query(`
+        SELECT a.*, 
+          COALESCE(t.nome, 'Sem turma') as turma_nome,
+          COALESCE(s.nome, '') as serie_nome,
+          COALESCE(e.nome, '') as escola_nome
+        FROM alunos a
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN series s ON t.serie_id = s.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        WHERE a.ativo = 1 AND (a.matricula IN (${placeholders}) OR a.idface_user_id IN (${placeholders}))
+      `, [...userIds, ...userIds]);
+      return ok(rows);
     },
   },
 
   usuarios: {
     getByAuthId: async (authId: string) => {
-      const { data, error } = await supabase.from('usuarios').select('*').eq('auth_id', authId).eq('ativo', true).maybeSingle();
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM usuarios WHERE auth_id = ? AND ativo = 1', [authId]);
+      return ok(rows[0] || null);
     },
     getByCpf: async (cpf: string) => {
-      const { data, error } = await supabase.from('usuarios').select('*').eq('cpf', cpf).eq('ativo', true).maybeSingle();
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM usuarios WHERE cpf = ? AND ativo = 1', [cpf]);
+      return ok(rows[0] || null);
     },
-    insert: async (data: { nome: string; cpf: string; papel: string; auth_id?: string }) => {
-      const { data: row, error } = await supabase.from('usuarios').insert({ ...data, ativo: true }).select('id, auth_id').single();
-      return error ? err(error.message) : ok({ id: row!.id, auth_id: row!.auth_id });
+    insert: async (data: { nome: string; cpf: string; papel: string; auth_id?: string; email?: string | null }) => {
+      const id = generateId();
+      const authId = data.auth_id || generateId();
+      await run('INSERT INTO usuarios (id, nome, cpf, papel, auth_id, email) VALUES (?, ?, ?, ?, ?, ?)',
+        [id, data.nome, data.cpf, data.papel, authId, data.email || null]);
+      return ok({ id, auth_id: authId });
     },
     update: async (id: string, data: { nome?: string; ativo?: boolean }) => {
-      const { error } = await supabase.from('usuarios').update(data).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (data.nome !== undefined) { sets.push('nome = ?'); vals.push(data.nome); }
+      if (data.ativo !== undefined) { sets.push('ativo = ?'); vals.push(data.ativo ? 1 : 0); }
+      if (sets.length > 0) {
+        vals.push(id);
+        await run(`UPDATE usuarios SET ${sets.join(', ')} WHERE id = ?`, vals);
+      }
+      return ok(null);
     },
     updateAvatar: async (id: string, avatarUrl: string | null) => {
-      const { error } = await supabase.from('usuarios').update({ avatar_url: avatarUrl }).eq('id', id);
-      return error ? err(error.message) : ok(null);
+       await run('UPDATE usuarios SET avatar_url = ? WHERE id = ?', [avatarUrl, id]);
+       return ok(null);
     },
+    // Soft-delete: inativa o usuário sem remover do banco
     deactivate: async (id: string) => {
-      const { error } = await supabase.from('usuarios').update({ ativo: false }).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      await run("UPDATE usuarios SET ativo = 0 WHERE id = ?", [id]);
+      return ok(null);
     },
   },
 
   diretores: {
     list: async () => {
-      const { data, error } = await supabase.from('diretores').select('*, usuarios!inner(nome, cpf, ativo), escolas(nome)').order('usuarios(nome)' as any);
-      if (error) return err(error.message);
-      return ok((data || []).filter((d: any) => d.usuarios?.ativo !== false).map((d: any) => ({ ...d, nome: d.usuarios?.nome, cpf: d.usuarios?.cpf, escola_nome: d.escolas?.nome, usuarios: undefined, escolas: undefined })));
+      const rows = await query(`
+        SELECT d.*, u.nome, u.cpf, e.nome as escola_nome
+        FROM diretores d
+        JOIN usuarios u ON d.usuario_id = u.id AND u.ativo = 1
+        JOIN escolas e ON d.escola_id = e.id
+        ORDER BY u.nome
+      `);
+      return ok(rows);
     },
     insert: async (data: { usuario_id: string; escola_id: string }) => {
-      const { data: row, error } = await supabase.from('diretores').insert(data).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+      const id = generateId();
+      await run('INSERT INTO diretores (id, usuario_id, escola_id) VALUES (?, ?, ?)', [id, data.usuario_id, data.escola_id]);
+      return ok({ id });
     },
     update: async (id: string, data: { escola_id?: string }) => {
-      const { error } = await supabase.from('diretores').update(data).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      if (data.escola_id) {
+        await run('UPDATE diretores SET escola_id = ? WHERE id = ?', [data.escola_id, id]);
+      }
+      return ok(null);
     },
+    // Soft-delete: inativa o usuário vinculado
     deactivate: async (diretorId: string) => {
-      const { data } = await supabase.from('diretores').select('usuario_id').eq('id', diretorId).maybeSingle();
-      if (data?.usuario_id) await supabase.from('usuarios').update({ ativo: false }).eq('id', data.usuario_id);
+      const rows = await query<{ usuario_id: string }>('SELECT usuario_id FROM diretores WHERE id = ?', [diretorId]);
+      if (rows[0]?.usuario_id) {
+        await run('UPDATE usuarios SET ativo = 0 WHERE id = ?', [rows[0].usuario_id]);
+      }
       return ok(null);
     },
     listByUsuario: async (usuarioId: string) => {
-      const { data, error } = await supabase.from('diretores').select('escola_id, escolas(id, nome, inep, endereco, telefone)').eq('usuario_id', usuarioId);
-      if (error) return err(error.message);
-      return ok((data || []).map((d: any) => ({ escola_id: d.escola_id, escolas: d.escolas })));
+      const rows = await query(`
+        SELECT d.escola_id, e.id, e.nome, e.inep, e.endereco, e.telefone
+        FROM diretores d
+        JOIN escolas e ON d.escola_id = e.id
+        WHERE d.usuario_id = ?
+      `, [usuarioId]);
+      return ok(rows.map(r => ({ escola_id: r.escola_id, escolas: { id: r.id, nome: r.nome, inep: r.inep, endereco: r.endereco, telefone: r.telefone } })));
     },
     getByEscola: async (escolaId: string) => {
-      const { data, error } = await supabase.from('diretores').select('usuarios(nome)').eq('escola_id', escolaId).maybeSingle();
-      return error ? err(error.message) : ok(data ? { nome: (data as any).usuarios?.nome } : null);
+      const rows = await query(`
+        SELECT u.nome FROM diretores d JOIN usuarios u ON d.usuario_id = u.id WHERE d.escola_id = ?
+      `, [escolaId]);
+      return ok(rows[0] || null);
     },
   },
 
   professores: {
     list: async () => {
-      const { data: profs, error } = await supabase.from('professores').select('id, usuario_id, usuarios(nome, cpf, ativo), professor_escolas(escolas(nome)), turma_professores(turmas(nome))');
-      if (error) return err(error.message);
-      const active = (profs || []).filter((p: any) => p.usuarios?.ativo !== false);
-      const result = active.map((prof: any) => ({
-        id: prof.id,
-        usuario_id: prof.usuario_id,
-        nome: prof.usuarios?.nome || '',
-        cpf: prof.usuarios?.cpf || '',
-        escolas: (prof.professor_escolas || []).map((e: any) => e.escolas?.nome || ''),
-        turmas: (prof.turma_professores || []).map((t: any) => t.turmas?.nome || '')
-      }));
+      const rows = await query(`
+        SELECT p.id, p.usuario_id, u.nome, u.cpf
+        FROM professores p
+        JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
+        ORDER BY u.nome
+      `);
+      const result = [];
+      for (const prof of rows) {
+        const escolas = await query(`
+          SELECT e.nome FROM professor_escolas pe JOIN escolas e ON pe.escola_id = e.id WHERE pe.professor_id = ?
+        `, [prof.id]);
+        const turmas = await query(`
+          SELECT t.nome FROM turma_professores tp JOIN turmas t ON tp.turma_id = t.id WHERE tp.professor_id = ?
+        `, [prof.id]);
+        result.push({ ...prof, escolas: escolas.map(e => e.nome), turmas: turmas.map(t => t.nome) });
+      }
       return ok(result);
     },
     listAll: async () => {
-      const { data, error } = await supabase.from('professores').select('id, usuario_id, usuarios!inner(nome, ativo)').filter('usuarios.ativo', 'eq', true);
-      if (error) return err(error.message);
-      return ok((data || []).map((p: any) => ({ id: p.id, usuario_id: p.usuario_id, nome: p.usuarios?.nome || '' })));
+      const rows = await query(`
+        SELECT p.id, p.usuario_id, u.nome
+        FROM professores p
+        JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
+        ORDER BY u.nome
+      `);
+      return ok(rows);
     },
     listByEscola: async (escolaId: string) => {
-      const { data: links, error } = await supabase.from('professor_escolas').select('professor_id').eq('escola_id', escolaId);
-      if (error) return err(error.message);
-      const profIds = (links || []).map((l: any) => l.professor_id);
-      if (profIds.length === 0) return ok([]);
-      const { data: profs } = await supabase.from('professores').select('id, usuario_id, usuarios(nome, cpf, ativo), professor_escolas(escolas(nome)), turma_professores(turmas(nome))').in('id', profIds);
-      const active = (profs || []).filter((p: any) => p.usuarios?.ativo !== false);
-      const result = active.map((prof: any) => ({
-        id: prof.id,
-        usuario_id: prof.usuario_id,
-        nome: prof.usuarios?.nome || '',
-        cpf: prof.usuarios?.cpf || '',
-        escolas: (prof.professor_escolas || []).map((e: any) => e.escolas?.nome || ''),
-        turmas: (prof.turma_professores || []).map((t: any) => t.turmas?.nome || '')
-      }));
+      const rows = await query(`
+        SELECT p.id, p.usuario_id, u.nome, u.cpf
+        FROM professores p
+        JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
+        JOIN professor_escolas pe ON p.id = pe.professor_id
+        WHERE pe.escola_id = ?
+        ORDER BY u.nome
+      `, [escolaId]);
+      const result = [];
+      for (const prof of rows) {
+        const escolas = await query(`
+          SELECT e.nome FROM professor_escolas pe JOIN escolas e ON pe.escola_id = e.id WHERE pe.professor_id = ?
+        `, [prof.id]);
+        const turmas = await query(`
+          SELECT t.nome FROM turma_professores tp JOIN turmas t ON tp.turma_id = t.id WHERE tp.professor_id = ?
+        `, [prof.id]);
+        result.push({ ...prof, escolas: escolas.map(e => e.nome), turmas: turmas.map(t => t.nome) });
+      }
       return ok(result);
     },
     insert: async (data: { usuario_id: string }) => {
-      const { data: row, error } = await supabase.from('professores').insert(data).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+      const id = generateId();
+      await run('INSERT INTO professores (id, usuario_id) VALUES (?, ?)', [id, data.usuario_id]);
+      return ok({ id });
     },
+    // Soft-delete: inativa o usuário vinculado
     deactivate: async (professorId: string) => {
-      const { data } = await supabase.from('professores').select('usuario_id').eq('id', professorId).maybeSingle();
-      if (data?.usuario_id) await supabase.from('usuarios').update({ ativo: false }).eq('id', data.usuario_id);
+      const rows = await query<{ usuario_id: string }>('SELECT usuario_id FROM professores WHERE id = ?', [professorId]);
+      if (rows[0]?.usuario_id) {
+        await run('UPDATE usuarios SET ativo = 0 WHERE id = ?', [rows[0].usuario_id]);
+      }
       return ok(null);
     },
   },
 
   professorEscolas: {
     listByProfessor: async (profId: string) => {
-      const { data, error } = await supabase.from('professor_escolas').select('escola_id, escolas(id, nome, inep, endereco, telefone)').eq('professor_id', profId);
-      if (error) return err(error.message);
-      return ok((data || []).map((d: any) => ({ escola_id: d.escola_id, escolas: d.escolas })));
+      const rows = await query(`
+        SELECT pe.escola_id, e.id, e.nome, e.inep, e.endereco, e.telefone
+        FROM professor_escolas pe
+        JOIN escolas e ON pe.escola_id = e.id
+        WHERE pe.professor_id = ?
+      `, [profId]);
+      return ok(rows.map(r => ({ escola_id: r.escola_id, escolas: { id: r.id, nome: r.nome } })));
     },
     deleteByProfessor: async (profId: string) => {
-      const { error } = await supabase.from('professor_escolas').delete().eq('professor_id', profId);
-      return error ? err(error.message) : ok(null);
+      await run('DELETE FROM professor_escolas WHERE professor_id = ?', [profId]);
+      return ok(null);
     },
     insert: async (data: { professor_id: string; escola_id: string }) => {
-      const { error } = await supabase.from('professor_escolas').insert(data);
-      return error ? err(error.message) : ok(null);
+      const id = generateId();
+      await run('INSERT INTO professor_escolas (id, professor_id, escola_id) VALUES (?, ?, ?)', [id, data.professor_id, data.escola_id]);
+      return ok(null);
     },
   },
 
   responsaveis: {
     list: async () => {
-      const { data, error } = await supabase.from('responsaveis').select('id, usuario_id, telefone, usuarios(nome, cpf, ativo), aluno_responsaveis(alunos(nome_completo, ativo))');
-      if (error) return err(error.message);
-      const active = (data || []).filter((r: any) => r.usuarios?.ativo !== false);
-      const result = active.map((resp: any) => ({
-        id: resp.id,
-        usuario_id: resp.usuario_id,
-        telefone: resp.telefone,
-        nome: resp.usuarios?.nome || '',
-        cpf: resp.usuarios?.cpf || '',
-        alunos: (resp.aluno_responsaveis || [])
-          .filter((l: any) => l.alunos?.ativo !== false)
-          .map((l: any) => l.alunos?.nome_completo || '')
-      }));
+      const rows = await query(`
+        SELECT r.id, r.usuario_id, r.telefone, u.nome, u.cpf
+        FROM responsaveis r
+        JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        ORDER BY u.nome
+      `);
+      // For each responsavel, get their alunos
+      const result = [];
+      for (const resp of rows) {
+        const alunos = await query(`
+          SELECT a.nome_completo 
+          FROM aluno_responsaveis ar 
+          JOIN alunos a ON ar.aluno_id = a.id 
+          WHERE ar.responsavel_id = ? AND a.ativo = 1
+        `, [resp.id]);
+        result.push({ ...resp, alunos: alunos.map(a => a.nome_completo) });
+      }
       return ok(result);
     },
     insert: async (data: { usuario_id: string; telefone?: string | null }) => {
-      const { data: row, error } = await supabase.from('responsaveis').insert(data).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+      const id = generateId();
+      await run('INSERT INTO responsaveis (id, usuario_id, telefone) VALUES (?, ?, ?)', [id, data.usuario_id, data.telefone || null]);
+      return ok({ id });
     },
     update: async (id: string, data: { telefone?: string | null }) => {
-      const { error } = await supabase.from('responsaveis').update(data).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      if (data.telefone !== undefined) {
+        await run('UPDATE responsaveis SET telefone = ? WHERE id = ?', [data.telefone, id]);
+      }
+      return ok(null);
     },
     search: async (term: string) => {
-      const { data, error } = await supabase
-        .from('responsaveis').select('id, usuario_id, telefone, usuarios!inner(nome, cpf)')
-        .or(`nome.ilike.%${term}%,cpf.ilike.%${term}%`, { referencedTable: 'usuarios' }).limit(10);
-      if (error) return err(error.message);
-      return ok((data || []).map((r: any) => ({ id: r.id, usuario_id: r.usuario_id, telefone: r.telefone, nome: r.usuarios?.nome || '', cpf: r.usuarios?.cpf || '' })));
+      const rows = await query(`
+        SELECT r.id, r.usuario_id, r.telefone, u.nome, u.cpf
+        FROM responsaveis r
+        JOIN usuarios u ON r.usuario_id = u.id
+        WHERE u.nome LIKE ? OR u.cpf LIKE ?
+        ORDER BY u.nome
+        LIMIT 10
+      `, [`%${term}%`, `%${term}%`]);
+      return ok(rows);
     },
   },
 
   alunoResponsaveis: {
     insert: async (data: { aluno_id: string; responsavel_id: string; parentesco?: string }) => {
-      const { data: row, error } = await supabase.from('aluno_responsaveis').insert({ ...data, parentesco: data.parentesco || 'Responsavel' }).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+      const id = generateId();
+      await run('INSERT INTO aluno_responsaveis (id, aluno_id, responsavel_id, parentesco) VALUES (?, ?, ?, ?)',
+        [id, data.aluno_id, data.responsavel_id, data.parentesco || 'Responsavel']);
+      return ok({ id });
     },
+    // Lista todos os responsáveis vinculados a um aluno com dados completos
     listByAluno: async (alunoId: string) => {
-      const { data, error } = await supabase
-        .from('aluno_responsaveis').select('id, parentesco, responsaveis(id, telefone, usuario_id, usuarios(nome, cpf))')
-        .eq('aluno_id', alunoId);
-      if (error) return err(error.message);
-      return ok((data || []).map((ar: any) => ({
-        vinculo_id: ar.id,
-        parentesco: ar.parentesco,
-        responsavel_id: ar.responsaveis?.id,
-        telefone: ar.responsaveis?.telefone,
-        usuario_id: ar.responsaveis?.usuario_id,
-        nome: ar.responsaveis?.usuarios?.nome || '',
-        cpf: ar.responsaveis?.usuarios?.cpf || '',
-      })));
+      const rows = await query(`
+        SELECT ar.id as vinculo_id, ar.parentesco,
+               r.id as responsavel_id, r.telefone,
+               u.nome, u.cpf
+        FROM aluno_responsaveis ar
+        JOIN responsaveis r ON ar.responsavel_id = r.id
+        JOIN usuarios u ON r.usuario_id = u.id
+        WHERE ar.aluno_id = ?
+        ORDER BY u.nome
+      `, [alunoId]);
+      return ok(rows);
     },
+    // Remove o vínculo (não remove o responsável do banco)
     delete: async (vinculoId: string) => {
-      const { error } = await supabase.from('aluno_responsaveis').delete().eq('id', vinculoId);
-      return error ? err(error.message) : ok(null);
+      await run('DELETE FROM aluno_responsaveis WHERE id = ?', [vinculoId]);
+      return ok(null);
     },
   },
 
   frequencias: {
+    // Busca todas as frequências de uma data com dados do aluno (para pré-carregar o histórico de chamada)
     listByDate: async (date: string) => {
-      const { data, error } = await supabase
-        .from('frequencias').select('*, alunos(nome_completo, matricula, idface_user_id, horario_fim, limite_max, escola_id)')
-        .eq('data', date).order('created_at', { ascending: false });
-      if (error) return err(error.message);
-      return ok((data || []).map((f: any) => ({ ...f, nome_completo: f.alunos?.nome_completo, matricula: f.alunos?.matricula, idface_user_id: f.alunos?.idface_user_id, horario_fim: f.alunos?.horario_fim, limite_max: f.alunos?.limite_max, escola_id: f.alunos?.escola_id, alunos: undefined })));
+      const rows = await query(`
+        SELECT f.*, a.nome_completo, a.matricula, a.idface_user_id, a.horario_fim, a.limite_max, a.escola_id
+        FROM frequencias f
+        JOIN alunos a ON f.aluno_id = a.id
+        WHERE f.data = ?
+        ORDER BY f.created_at DESC
+      `, [date]);
+      return ok(rows);
     },
     listByTurmaAndDate: async (turmaId: string, date: string) => {
-      const { data, error } = await supabase
-        .from('frequencias').select('*, alunos(nome_completo, matricula)')
-        .eq('turma_id', turmaId).eq('data', date).order('alunos(nome_completo)' as any);
-      if (error) return err(error.message);
-      return ok((data || []).map((f: any) => ({ ...f, nome_completo: f.alunos?.nome_completo, matricula: f.alunos?.matricula, alunos: undefined })));
+      const rows = await query(`
+        SELECT f.*, a.nome_completo, a.matricula
+        FROM frequencias f
+        JOIN alunos a ON f.aluno_id = a.id
+        WHERE f.turma_id = ? AND f.data = ?
+        ORDER BY a.nome_completo
+      `, [turmaId, date]);
+      return ok(rows);
     },
     listByAlunos: async (alunoIds: string[], start: string, end: string) => {
       if (alunoIds.length === 0) return ok([]);
-      const { data, error } = await supabase.from('frequencias').select('*').in('aluno_id', alunoIds).gte('data', start).lte('data', end).order('data', { ascending: false });
-      return error ? err(error.message) : ok(data);
+      const placeholders = alunoIds.map(() => '?').join(',');
+      const rows = await query(`
+        SELECT * FROM frequencias 
+        WHERE aluno_id IN (${placeholders}) AND data BETWEEN ? AND ?
+        ORDER BY data DESC
+      `, [...alunoIds, start, end]);
+      return ok(rows);
     },
     listAll: async () => {
-      const { data, error } = await supabase.from('frequencias').select('*').order('data', { ascending: false });
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM frequencias ORDER BY data DESC, created_at DESC');
+      return ok(rows);
     },
     countByEscola: async (escolaId: string, date: string) => {
-      const { data: alunosData } = await supabase.from('alunos').select('id').eq('escola_id', escolaId).eq('ativo', true);
-      const alunoIds = (alunosData || []).map(a => a.id);
-      if (alunoIds.length === 0) return ok({ total: 0, presentes: 0 });
-      const { data: freqs } = await supabase.from('frequencias').select('status').in('aluno_id', alunoIds).eq('data', date);
-      const total = freqs?.length || 0;
-      const presentes = freqs?.filter(f => ['presente', 'atrasado'].includes(f.status)).length || 0;
-      return ok({ total, presentes });
+      const rows = await query<{ total: number; presentes: number }>(`
+        SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN f.status IN ('presente', 'atrasado') THEN 1 ELSE 0 END) as presentes
+        FROM frequencias f
+        JOIN alunos a ON f.aluno_id = a.id
+        WHERE a.escola_id = ? AND f.data = ? AND a.ativo = 1
+      `, [escolaId, date]);
+      return ok(rows[0] || { total: 0, presentes: 0 });
     },
     frequenciaHojeByProfessor: async (usuarioId: string, date: string) => {
-      const { data: prof } = await supabase.from('professores').select('id').eq('usuario_id', usuarioId).maybeSingle();
-      if (!prof) return ok([]);
-      const { data: turmaLinks } = await supabase.from('turma_professores').select('turma_id, turmas(nome)').eq('professor_id', prof.id);
-      
-      const turmaIds = turmaLinks?.map((l: any) => l.turma_id) || [];
-      if (turmaIds.length === 0) return ok([]);
-
-      const { data: alunos } = await supabase.from('alunos').select('id, turma_id').in('turma_id', turmaIds).eq('ativo', true);
-      const alunosMap = new Map();
-      const alunoIds: string[] = [];
-      for (const a of (alunos || [])) {
-         alunosMap.set(a.turma_id, [...(alunosMap.get(a.turma_id) || []), a.id]);
-         alunoIds.push(a.id);
-      }
-
-      let freqsByAluno = new Map();
-      if (alunoIds.length > 0) {
-         const { data: freqs } = await supabase.from('frequencias').select('aluno_id, status').in('aluno_id', alunoIds).eq('data', date);
-         for (const f of freqs || []) {
-            freqsByAluno.set(f.aluno_id, f.status);
-         }
-      }
-
-      const result = turmaLinks!.map((link: any) => {
-        const idsAndT = alunosMap.get(link.turma_id) || [];
-        const total_alunos = idsAndT.length;
-        let frequencias_registradas = 0, presentes = 0;
-        for (const id of idsAndT) {
-           if (freqsByAluno.has(id)) {
-              frequencias_registradas++;
-              if (['presente', 'atrasado'].includes(freqsByAluno.get(id))) presentes++;
-           }
-        }
-        return { turma_id: link.turma_id, turma_nome: (link as any).turmas?.nome || '', total_alunos, frequencias_registradas, presentes };
-      });
-      return ok(result);
+      const rows = await query<{ turma_id: string, turma_nome: string, total_alunos: number, frequencias_registradas: number, presentes: number }>(`
+        SELECT 
+          t.id as turma_id,
+          t.nome as turma_nome,
+          COUNT(DISTINCT a.id) as total_alunos,
+          SUM(CASE WHEN f.id IS NOT NULL THEN 1 ELSE 0 END) as frequencias_registradas,
+          SUM(CASE WHEN f.id IS NOT NULL AND f.status IN ('presente', 'atrasado') THEN 1 ELSE 0 END) as presentes
+        FROM turmas t
+        JOIN turma_professores tp ON t.id = tp.turma_id
+        JOIN professores p ON tp.professor_id = p.id
+        LEFT JOIN alunos a ON t.id = a.turma_id AND a.ativo = 1
+        LEFT JOIN frequencias f ON a.id = f.aluno_id AND f.data = ?
+        WHERE p.usuario_id = ?
+        GROUP BY t.id, t.nome
+      `, [date, usuarioId]);
+      return ok(rows);
     },
     insert: async (data: { aluno_id: string; turma_id?: string | null; data: string; hora_entrada?: string | null; status?: string; motivo?: string | null; dispositivo_id?: string | null }) => {
-      const { data: row, error } = await supabase.from('frequencias').insert({ ...data, status: data.status || 'falta' }).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+      const id = generateId();
+      await run('INSERT INTO frequencias (id, aluno_id, turma_id, data, hora_entrada, status, motivo, dispositivo_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, data.aluno_id, data.turma_id || null, data.data, data.hora_entrada || null, data.status || 'falta', data.motivo || null, data.dispositivo_id || null]);
+      return ok({ id });
     },
     updateStatus: async (id: string, status: string) => {
-      const { error } = await supabase.from('frequencias').update({ status }).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      await run('UPDATE frequencias SET status = ? WHERE id = ?', [status, id]);
+      return ok(null);
     },
+    // Calcula o percentual de presenças do aluno no mês atual
+    // Considera presente + atrasado como presença; falta e justificada como ausência.
     monthlyPct: async (alunoId: string) => {
-      const now = new Date();
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-      const { data } = await supabase.from('frequencias').select('status').eq('aluno_id', alunoId).gte('data', firstDay).lte('data', lastDay);
-      if (!data || data.length === 0) return ok(null);
-      const presentes = data.filter(f => ['presente', 'atrasado'].includes(f.status)).length;
-      return ok(Math.round((presentes / data.length) * 100));
+      const rows = await query<{ total: number; presentes: number }>(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN status IN ('presente', 'atrasado') THEN 1 ELSE 0 END) as presentes
+        FROM frequencias
+        WHERE aluno_id = ?
+          AND strftime('%Y-%m', data) = strftime('%Y-%m', 'now')
+      `, [alunoId]);
+      const { total, presentes } = rows[0] || { total: 0, presentes: 0 };
+      if (!total) return ok(null); // Sem registros = null (não exibe barra falsa)
+      return ok(Math.round((presentes / total) * 100));
     },
   },
 
   justificativas: {
     list: async () => {
-      const { data, error } = await supabase.from('justificativas').select(JUST_SELECT).order('created_at', { ascending: false });
-      return error ? err(error.message) : ok((data || []).map(flattenJustificativa));
+      const rows = await query(`
+        SELECT j.*, 
+          a.nome_completo as aluno_nome, 
+          a.matricula as aluno_matricula,
+          f.data as data_falta,
+          u.nome as responsavel_nome
+        FROM justificativas j
+        LEFT JOIN frequencias f ON j.frequencia_id = f.id
+        LEFT JOIN alunos a ON j.aluno_id = a.id OR f.aluno_id = a.id
+        LEFT JOIN responsaveis r ON j.responsavel_id = r.id
+        LEFT JOIN usuarios u ON r.usuario_id = u.id
+        ORDER BY j.created_at DESC
+      `);
+      return ok(rows);
     },
     listByResponsavel: async (usuarioId: string) => {
-      const { data: resp } = await supabase.from('responsaveis').select('id').eq('usuario_id', usuarioId).maybeSingle();
-      if (!resp) return ok([]);
-      const { data, error } = await supabase.from('justificativas').select(JUST_SELECT).eq('responsavel_id', resp.id).order('created_at', { ascending: false });
-      return error ? err(error.message) : ok((data || []).map(flattenJustificativa));
+      const rows = await query(`
+        SELECT j.*, 
+          a.nome_completo as aluno_nome, 
+          a.matricula as aluno_matricula,
+          f.data as data_falta,
+          u.nome as responsavel_nome
+        FROM justificativas j
+        LEFT JOIN frequencias f ON j.frequencia_id = f.id
+        LEFT JOIN alunos a ON j.aluno_id = a.id OR f.aluno_id = a.id
+        LEFT JOIN responsaveis r ON j.responsavel_id = r.id
+        LEFT JOIN usuarios u ON r.usuario_id = u.id
+        WHERE r.usuario_id = ?
+        ORDER BY j.created_at DESC
+      `, [usuarioId]);
+      return ok(rows);
     },
     listPendentes: async (escolaId: string) => {
-      const { data: alunosData } = await supabase.from('alunos').select('id').eq('escola_id', escolaId).eq('ativo', true);
-      const ids = (alunosData || []).map(a => a.id);
-      if (ids.length === 0) return ok([]);
-      const { data, error } = await supabase.from('justificativas').select(JUST_SELECT).in('aluno_id', ids).eq('status', 'pendente').order('created_at', { ascending: false });
-      return error ? err(error.message) : ok((data || []).map(flattenJustificativa));
+      const rows = await query(`
+        SELECT j.*, 
+          a.nome_completo as aluno_nome, 
+          a.matricula as aluno_matricula,
+          f.data as data_falta,
+          u.nome as responsavel_nome
+        FROM justificativas j
+        LEFT JOIN frequencias f ON j.frequencia_id = f.id
+        LEFT JOIN alunos a ON j.aluno_id = a.id OR f.aluno_id = a.id
+        LEFT JOIN responsaveis r ON j.responsavel_id = r.id
+        LEFT JOIN usuarios u ON r.usuario_id = u.id
+        WHERE a.escola_id = ? AND j.status = 'pendente'
+        ORDER BY j.created_at DESC
+      `, [escolaId]);
+      return ok(rows);
     },
     listByEscola: async (escolaId: string) => {
-      const { data: alunosData } = await supabase.from('alunos').select('id').eq('escola_id', escolaId).eq('ativo', true);
-      const ids = (alunosData || []).map(a => a.id);
-      if (ids.length === 0) return ok([]);
-      const { data, error } = await supabase.from('justificativas').select(JUST_SELECT).in('aluno_id', ids).order('created_at', { ascending: false });
-      return error ? err(error.message) : ok((data || []).map(flattenJustificativa));
+      const rows = await query(`
+        SELECT j.*, 
+          a.nome_completo as aluno_nome, 
+          a.matricula as aluno_matricula,
+          f.data as data_falta,
+          u.nome as responsavel_nome
+        FROM justificativas j
+        LEFT JOIN frequencias f ON j.frequencia_id = f.id
+        LEFT JOIN alunos a ON j.aluno_id = a.id OR f.aluno_id = a.id
+        LEFT JOIN responsaveis r ON j.responsavel_id = r.id
+        LEFT JOIN usuarios u ON r.usuario_id = u.id
+        WHERE a.escola_id = ?
+        ORDER BY j.created_at DESC
+      `, [escolaId]);
+      return ok(rows);
     },
-    insert: async (data: { responsavel_id: string; aluno_id?: string | null; frequencia_id?: string | null; tipo?: string; descricao?: string | null; arquivo_url?: string | null; data_inicio?: string | null; data_fim?: string | null }) => {
-      const { data: row, error } = await supabase.from('justificativas').insert({ ...data, status: 'pendente', tipo: data.tipo || 'Outros' }).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+    insert: async (data: { frequencia_id?: string | null; responsavel_id: string; aluno_id?: string | null; tipo?: string; descricao?: string | null; arquivo_url?: string | null; data_inicio?: string | null; data_fim?: string | null }) => {
+      const id = generateId();
+      await run('INSERT INTO justificativas (id, frequencia_id, responsavel_id, aluno_id, tipo, descricao, arquivo_url, data_inicio, data_fim) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, data.frequencia_id || null, data.responsavel_id, data.aluno_id || null, data.tipo || 'Outros', data.descricao || null, data.arquivo_url || null, data.data_inicio || null, data.data_fim || null]);
+      return ok({ id });
     },
     update: async (id: string, data: { status?: string; observacao_diretor?: string | null }) => {
-      const { error } = await supabase.from('justificativas').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
-      return error ? err(error.message) : ok(null);
+      const sets: string[] = ["updated_at = datetime('now')"];
+      const vals: any[] = [];
+      if (data.status !== undefined) { sets.push('status = ?'); vals.push(data.status); }
+      if (data.observacao_diretor !== undefined) { sets.push('observacao_diretor = ?'); vals.push(data.observacao_diretor); }
+      vals.push(id);
+      await run(`UPDATE justificativas SET ${sets.join(', ')} WHERE id = ?`, vals);
+      return ok(null);
     },
   },
 
   iotConfig: {
     getByEscola: async (escolaId: string) => {
-      const { data, error } = await supabase.from('escola_iot_config').select('*').eq('escola_id', escolaId).maybeSingle();
-      return error ? err(error.message) : ok(data);
+      const rows = await query('SELECT * FROM escola_iot_config WHERE escola_id = ?', [escolaId]);
+      return ok(rows[0] || null);
     },
     upsert: async (data: { escola_id: string; ip_address?: string | null; ativo?: boolean; modo_verificacao?: string; captura_timeout?: number | null }) => {
-      const { error } = await supabase.from('escola_iot_config').upsert({
-        escola_id: data.escola_id,
-        ip_address: data.ip_address || null,
-        ativo: data.ativo !== false,
-        modo_verificacao: data.modo_verificacao || 'entrada',
-        captura_timeout: data.captura_timeout ?? 5,
-      }, { onConflict: 'escola_id' });
-      return error ? err(error.message) : ok(null);
+      const existing = await query('SELECT id FROM escola_iot_config WHERE escola_id = ?', [data.escola_id]);
+      const timeout = data.captura_timeout ?? 5;
+      if (existing.length > 0) {
+        await run('UPDATE escola_iot_config SET ip_address = ?, ativo = ?, modo_verificacao = ?, captura_timeout = ? WHERE escola_id = ?',
+          [data.ip_address || null, data.ativo !== false ? 1 : 0, data.modo_verificacao || 'entrada', timeout, data.escola_id]);
+      } else {
+        const id = generateId();
+        await run('INSERT INTO escola_iot_config (id, escola_id, ip_address, ativo, modo_verificacao, captura_timeout) VALUES (?, ?, ?, ?, ?, ?)',
+          [id, data.escola_id, data.ip_address || null, data.ativo !== false ? 1 : 0, data.modo_verificacao || 'entrada', timeout]);
+      }
+      return ok(null);
     },
   },
 
   stats: {
     counts: async () => {
-      const [{ count: escolas }, { count: alunos }] = await Promise.all([
-        supabase.from('escolas').select('id', { count: 'exact', head: true }),
-        supabase.from('alunos').select('id', { count: 'exact', head: true }).eq('ativo', true),
-      ]);
-      const { data: profData } = await supabase.from('professores').select('usuarios(ativo)');
-      const { data: dirData } = await supabase.from('diretores').select('usuarios(ativo)');
+      const escolas = await query<{ c: number }>('SELECT COUNT(*) as c FROM escolas');
+      const alunos = await query<{ c: number }>('SELECT COUNT(*) as c FROM alunos WHERE ativo = 1');
+      const professores = await query<{ c: number }>(`
+        SELECT COUNT(*) as c FROM professores p 
+        JOIN usuarios u ON p.usuario_id = u.id 
+        WHERE u.ativo = 1
+      `);
+      const diretores = await query<{ c: number }>(`
+        SELECT COUNT(*) as c FROM diretores d 
+        JOIN usuarios u ON d.usuario_id = u.id 
+        WHERE u.ativo = 1
+      `);
       return ok({
-        escolas: escolas || 0,
-        alunos: alunos || 0,
-        professores: (profData || []).filter((p: any) => p.usuarios?.ativo !== false).length,
-        diretores: (dirData || []).filter((d: any) => d.usuarios?.ativo !== false).length,
+        escolas: escolas[0]?.c || 0,
+        alunos: alunos[0]?.c || 0,
+        professores: professores[0]?.c || 0,
+        diretores: diretores[0]?.c || 0,
       });
     },
     countsByEscola: async (escolaId: string) => {
-      const [{ count: alunos }, { count: turmas }] = await Promise.all([
-        supabase.from('alunos').select('id', { count: 'exact', head: true }).eq('escola_id', escolaId).eq('ativo', true),
-        supabase.from('turmas').select('id', { count: 'exact', head: true }).eq('escola_id', escolaId),
-      ]);
-      const { data: profLinks } = await supabase.from('professor_escolas').select('professor_id').eq('escola_id', escolaId);
-      const profIds = (profLinks || []).map((l: any) => l.professor_id);
-      let activeProfs = 0;
-      if (profIds.length > 0) {
-        const { data: profs } = await supabase.from('professores').select('usuarios(ativo)').in('id', profIds);
-        activeProfs = (profs || []).filter((p: any) => p.usuarios?.ativo !== false).length;
-      }
-      return ok({ alunos: alunos || 0, professores: activeProfs, turmas: turmas || 0 });
+      const alunos = await query<{ c: number }>('SELECT COUNT(*) as c FROM alunos WHERE escola_id = ? AND ativo = 1', [escolaId]);
+      const professores = await query<{ c: number }>(`
+        SELECT COUNT(DISTINCT pe.professor_id) as c 
+        FROM professor_escolas pe 
+        JOIN professores p ON pe.professor_id = p.id
+        JOIN usuarios u ON p.usuario_id = u.id
+        WHERE pe.escola_id = ? AND u.ativo = 1
+      `, [escolaId]);
+      const turmas = await query<{ c: number }>('SELECT COUNT(*) as c FROM turmas WHERE escola_id = ?', [escolaId]);
+      return ok({
+        alunos: alunos[0]?.c || 0,
+        professores: professores[0]?.c || 0,
+        turmas: turmas[0]?.c || 0,
+      });
     },
     countsByProfessor: async (usuarioId: string) => {
-      const { data: prof } = await supabase.from('professores').select('id').eq('usuario_id', usuarioId).maybeSingle();
-      if (!prof) return ok({ turmas: 0, alunos: 0 });
-      const { count: turmas } = await supabase.from('turma_professores').select('id', { count: 'exact', head: true }).eq('professor_id', prof.id);
-      const { data: turmaLinks } = await supabase.from('turma_professores').select('turma_id').eq('professor_id', prof.id);
-      const turmaIds = (turmaLinks || []).map((t: any) => t.turma_id);
-      let alunos = 0;
-      if (turmaIds.length > 0) {
-        const { count } = await supabase.from('alunos').select('id', { count: 'exact', head: true }).in('turma_id', turmaIds).eq('ativo', true);
-        alunos = count || 0;
-      }
-      return ok({ turmas: turmas || 0, alunos });
+      const turmas = await query<{ c: number }>(`
+        SELECT COUNT(DISTINCT tp.turma_id) as c FROM turma_professores tp
+        JOIN professores p ON tp.professor_id = p.id
+        WHERE p.usuario_id = ?
+      `, [usuarioId]);
+      const alunos = await query<{ c: number }>(`
+        SELECT COUNT(DISTINCT a.id) as c FROM alunos a
+        JOIN turma_professores tp ON a.turma_id = tp.turma_id
+        JOIN professores p ON tp.professor_id = p.id
+        WHERE p.usuario_id = ? AND a.ativo = 1
+      `, [usuarioId]);
+      return ok({
+        turmas: turmas[0]?.c || 0,
+        alunos: alunos[0]?.c || 0,
+      });
     },
   },
 
   turma_professores: {
     listByTurma: async (turmaId: string) => {
-      const { data, error } = await supabase.from('turma_professores').select('professores(usuarios(nome))').eq('turma_id', turmaId);
-      if (error) return err(error.message);
-      return ok((data || []).map((tp: any) => ({ nome: tp.professores?.usuarios?.nome || '' })));
+      const rows = await query(`
+        SELECT u.nome FROM turma_professores tp
+        JOIN professores p ON tp.professor_id = p.id
+        JOIN usuarios u ON p.usuario_id = u.id
+        WHERE tp.turma_id = ?
+      `, [turmaId]);
+      return ok(rows);
     },
+    // Retorna professores vinculados com id e nome (para o modal de edição)
     listProfessoresCompleto: async (turmaId: string) => {
-      const { data, error } = await supabase.from('turma_professores').select('professor_id, professores(usuarios(nome))').eq('turma_id', turmaId);
-      if (error) return err(error.message);
-      return ok((data || []).map((tp: any) => ({ professor_id: tp.professor_id, nome: tp.professores?.usuarios?.nome || '' })));
+      const rows = await query<{ professor_id: string; nome: string }>(`
+        SELECT tp.professor_id, u.nome
+        FROM turma_professores tp
+        JOIN professores p ON tp.professor_id = p.id
+        JOIN usuarios u ON p.usuario_id = u.id
+        WHERE tp.turma_id = ?
+      `, [turmaId]);
+      return ok(rows);
     },
     setProfessores: async (turmaId: string, professorIds: string[]) => {
-      await supabase.from('turma_professores').delete().eq('turma_id', turmaId);
-      if (professorIds.length > 0) {
-        await supabase.from('turma_professores').insert(professorIds.map(pid => ({ turma_id: turmaId, professor_id: pid })));
+      await run('DELETE FROM turma_professores WHERE turma_id = ?', [turmaId]);
+      for (const profId of professorIds) {
+        const id = generateId();
+        await run('INSERT INTO turma_professores (id, turma_id, professor_id) VALUES (?, ?, ?)', [id, turmaId, profId]);
       }
       return ok(null);
     },
@@ -631,27 +886,32 @@ export const db = {
 
   notificacoes: {
     listByDestinatario: async (usuarioId: string) => {
-      const { data, error } = await supabase
-        .from('notificacoes').select('*, usuarios!remetente_id(nome)')
-        .eq('destinatario_id', usuarioId).order('data_envio', { ascending: false }).limit(50);
-      if (error) return err(error.message);
-      return ok((data || []).map((n: any) => ({ ...n, remetente_nome: n.usuarios?.nome || 'Sistema', lida: n.lida ? 1 : 0, usuarios: undefined })));
+      const rows = await query(`
+        SELECT n.*, u.nome as remetente_nome
+        FROM notificacoes n
+        LEFT JOIN usuarios u ON n.remetente_id = u.id
+        WHERE n.destinatario_id = ?
+        ORDER BY n.data_envio DESC LIMIT 50
+      `, [usuarioId]);
+      return ok(rows);
     },
     countUnread: async (usuarioId: string) => {
-      const { count, error } = await supabase.from('notificacoes').select('id', { count: 'exact', head: true }).eq('destinatario_id', usuarioId).eq('lida', false);
-      return error ? err(error.message) : ok(count || 0);
+       const rows = await query<{ c: number }>('SELECT COUNT(*) as c FROM notificacoes WHERE destinatario_id = ? AND lida = 0', [usuarioId]);
+       return ok(rows[0]?.c || 0);
     },
     insert: async (data: { remetente_id: string; destinatario_id: string; titulo: string; mensagem: string }) => {
-      const { data: row, error } = await supabase.from('notificacoes').insert(data).select('id').single();
-      return error ? err(error.message) : ok({ id: row!.id });
+       const id = generateId();
+       await run('INSERT INTO notificacoes (id, remetente_id, destinatario_id, titulo, mensagem, lida) VALUES (?, ?, ?, ?, ?, 0)',
+         [id, data.remetente_id, data.destinatario_id, data.titulo, data.mensagem]);
+       return ok({ id });
     },
     markAsRead: async (id: string) => {
-      const { error } = await supabase.from('notificacoes').update({ lida: true }).eq('id', id);
-      return error ? err(error.message) : ok(null);
+       await run('UPDATE notificacoes SET lida = 1 WHERE id = ?', [id]);
+       return ok(null);
     },
     markAllAsRead: async (usuarioId: string) => {
-      const { error } = await supabase.from('notificacoes').update({ lida: true }).eq('destinatario_id', usuarioId);
-      return error ? err(error.message) : ok(null);
-    },
+       await run('UPDATE notificacoes SET lida = 1 WHERE destinatario_id = ?', [usuarioId]);
+       return ok(null);
+    }
   },
 };
