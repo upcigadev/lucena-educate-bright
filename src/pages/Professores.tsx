@@ -14,8 +14,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { criarUsuario } from '@/lib/criar-usuario';
 import { Bell, Trash2 } from 'lucide-react';
 import { SendNotificationModal } from '@/components/shared/SendNotificationModal';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
-interface ProfRow { id: string; usuario_id: string; nome: string; cpf: string; escolas: string[]; turmas: string[]; }
+interface ProfRow { id: string; usuario_id: string; nome: string; cpf: string; avatar_url?: string | null; escolas: string[]; turmas: string[]; }
 
 export default function Professores() {
   const [data, setData] = useState<ProfRow[]>([]);
@@ -93,6 +94,17 @@ export default function Professores() {
   };
 
   const columns: Column<ProfRow>[] = [
+    {
+      key: 'avatar_url', header: '', sortable: false,
+      render: r => (
+        <Avatar className="h-8 w-8 shrink-0">
+          <AvatarImage src={r.avatar_url || ''} className="object-cover" />
+          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+            {r.nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+      ),
+    },
     { key: 'nome', header: 'Nome' },
     { key: 'cpf', header: 'CPF', render: r => maskCPF(r.cpf) },
     { key: 'escolas', header: 'Escolas', render: r => (

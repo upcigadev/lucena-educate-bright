@@ -11,6 +11,7 @@ export interface UsuarioPerfil {
   papel: Papel;
   ativo: boolean;
   auth_id: string;
+  avatar_url?: string | null;
 }
 
 export interface AppUser {
@@ -29,6 +30,7 @@ interface AuthState {
   setLoading: (loading: boolean) => void;
   logout: () => Promise<void>;
   loadPerfil: (authId: string) => Promise<void>;
+  updateAvatar: (avatarUrl: string | null) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -54,5 +56,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (data) {
       set({ perfil: data as unknown as UsuarioPerfil });
     }
+  },
+  updateAvatar: async (avatarUrl: string | null) => {
+    const state = useAuthStore.getState();
+    if (!state.perfil) throw new Error('Sem perfil ativo');
+    await db.usuarios.updateAvatar(state.perfil.id, avatarUrl);
+    set((s) => ({
+      perfil: s.perfil ? { ...s.perfil, avatar_url: avatarUrl } : null,
+    }));
   },
 }));

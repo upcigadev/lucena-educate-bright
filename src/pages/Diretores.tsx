@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { maskCPF, cpfMask, validateCPF } from '@/lib/cpf';
 import { criarUsuario } from '@/lib/criar-usuario';
-import { Trash2 } from 'lucide-react';
+import { Bell, Trash2 } from 'lucide-react';
+import { SendNotificationModal } from '@/components/shared/SendNotificationModal';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface DiretorRow {
   id: string;
@@ -19,6 +21,7 @@ interface DiretorRow {
   nome: string;
   cpf: string;
   escola_nome: string;
+  avatar_url?: string | null;
 }
 
 export default function Diretores() {
@@ -27,6 +30,8 @@ export default function Diretores() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<DiretorRow | null>(null);
   const [form, setForm] = useState({ nome: '', cpf: '', escola_id: '' });
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifDestinatario, setNotifDestinatario] = useState<{ id: string; nome: string } | null>(null);
 
   const load = async () => {
     const { data: dirs } = await db.diretores.list();
@@ -67,14 +72,44 @@ export default function Diretores() {
   };
 
   const columns: Column<DiretorRow>[] = [
+    {
+      key: 'avatar_url', header: '', sortable: false,
+      render: r => (
+        <Avatar className="h-8 w-8 shrink-0">
+          <AvatarImage src={r.avatar_url || ''} className="object-cover" />
+          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+            {r.nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+      ),
+    },
     { key: 'nome', header: 'Nome' },
     { key: 'cpf', header: 'CPF', render: (r) => maskCPF(r.cpf) },
     { key: 'escola_nome', header: 'Escola' },
-    { key: 'delete_action', header: '', sortable: false, render: r => (
-      <button onClick={(e) => { e.stopPropagation(); deactivate(r); }} className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Inativar">
-        <Trash2 className="h-4 w-4" />
-      </button>
-    )},
+    {
+      key: 'notif_action', header: '', sortable: false, render: r => (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-primary"
+          title="Enviar Notificação"
+          onClick={(e) => {
+            e.stopPropagation();
+            setNotifDestinatario({ id: r.usuario_id, nome: r.nome });
+            setNotifOpen(true);
+          }}
+        >
+          <Bell className="h-3.5 w-3.5" />
+        </Button>
+      ),
+    },
+    {
+      key: 'delete_action', header: '', sortable: false, render: r => (
+        <button onClick={(e) => { e.stopPropagation(); deactivate(r); }} className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Inativar">
+          <Trash2 className="h-4 w-4" />
+        </button>
+      ),
+    },
   ];
 
   return (
@@ -98,6 +133,15 @@ export default function Diretores() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {notifDestinatario && (
+        <SendNotificationModal
+          open={notifOpen}
+          onClose={() => { setNotifOpen(false); setNotifDestinatario(null); }}
+          destinatarioId={notifDestinatario.id}
+          destinatarioNome={notifDestinatario.nome}
+        />
+      )}
     </div>
   );
 }

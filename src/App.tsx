@@ -28,6 +28,9 @@ import Frequencia from '@/pages/Frequencia';
 import NotFound from '@/pages/NotFound';
 import MinhasTurmas from '@/pages/MinhasTurmas';
 import MeusFilhos from '@/pages/MeusFilhos';
+import BuscaAtiva from '@/pages/BuscaAtiva';
+import Ocorrencias from '@/pages/Ocorrencias';
+import Mural from '@/pages/Mural';
 
 const queryClient = new QueryClient();
 
@@ -288,6 +291,15 @@ const App = () => (
               
               <Route path="responsaveis" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR']}><Responsaveis /></ProtectedRoute>} />
               <Route path="justificativas" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR', 'RESPONSAVEL']}><Justificativas /></ProtectedRoute>} />
+
+              {/* Busca Ativa — evasão escolar */}
+              <Route path="busca-ativa" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR']}><BuscaAtiva /></ProtectedRoute>} />
+
+              {/* Ocorrências disciplinares */}
+              <Route path="ocorrencias" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR', 'PROFESSOR']}><Ocorrencias /></ProtectedRoute>} />
+
+              {/* Mural de comunicados */}
+              <Route path="mural" element={<ProtectedRoute allowedRoles={['SECRETARIA', 'DIRETOR']}><Mural /></ProtectedRoute>} />
             </Route>
             <Route path="*" element={<NotFound />} />
         </Routes>

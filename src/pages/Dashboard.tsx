@@ -9,9 +9,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   School, Users, GraduationCap, UserCog,
   TrendingUp, TrendingDown, AlertTriangle,
-  CheckCircle2, Clock, FileText, ArrowRight,
+  CheckCircle2, Clock, FileText, ArrowRight, Bell,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface EscolaStats {
@@ -59,6 +59,15 @@ function StatCard({ title, value, icon: Icon, color = 'primary', suffix = '' }: 
   );
 }
 
+interface NotifRow {
+  id: string;
+  titulo: string;
+  mensagem: string;
+  remetente_nome: string;
+  data_envio: string;
+  lida: number;
+}
+
 export default function Dashboard() {
   const { perfil } = useAuthStore();
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -73,6 +82,9 @@ export default function Dashboard() {
   // RESPONSAVEL-specific
   interface FilhoDash { id: string; nome: string; turma: string; escola: string; avatarUrl: string | null; freqPct: number; statusHoje: string | null; }
   const [meusFilhos, setMeusFilhos] = useState<FilhoDash[]>([]);
+  // PROFESSOR-specific
+  const [notificacoesRecentes, setNotificacoesRecentes] = useState<NotifRow[]>([]);
+  const [turmasFreqHoje, setTurmasFreqHoje] = useState<any[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -112,12 +124,37 @@ export default function Dashboard() {
           return;
         }
 
+        // ── PROFESSOR: dedicated load ──────────────────────────────
+        if (currentPerfil?.papel === 'PROFESSOR') {
+          const { data: counts } = await db.stats.countsByProfessor(currentPerfil.id);
+          if (counts) setStats(counts as any);
+
+          // Frequência das turmas hoje
+          const { data: turmasFreq } = await db.frequencias.frequenciaHojeByProfessor(currentPerfil.id, today);
+          const tfList = (turmasFreq || []) as any[];
+          setTurmasFreqHoje(tfList);
+
+          let tp = 0, ta = 0, totalA = 0;
+          for (const t of tfList) {
+            const presentes = t.presentes || 0;
+            const regTotal = t.frequencias_registradas || 0;
+            tp += presentes;
+            ta += Math.max(0, regTotal - presentes);
+            totalA += t.total_alunos || 0;
+          }
+          setFreqHoje({ presentes: tp, atrasados: ta, faltas: Math.max(0, totalA - tp - ta), total: totalA });
+
+          // Notificações recentes recebidas
+          const { data: notifs } = await db.notificacoes.listByDestinatario(currentPerfil.id);
+          setNotificacoesRecentes(((notifs || []) as NotifRow[]).slice(0, 5));
+
+          setLoading(false);
+          return;
+        }
+
         // ── Other roles ────────────────────────────────────────────────
         if (currentPerfil?.papel === 'DIRETOR' && currentEscola) {
           const { data: counts } = await db.stats.countsByEscola(currentEscola);
-          if (counts) setStats(counts as any);
-        } else if (currentPerfil?.papel === 'PROFESSOR') {
-          const { data: counts } = await db.stats.countsByProfessor(currentPerfil.id);
           if (counts) setStats(counts as any);
         } else {
           // Global counts
@@ -356,7 +393,123 @@ export default function Dashboard() {
     );
   }
 
-  // ── Generic dashboard (SECRETARIA, DIRETOR, PROFESSOR) ───────────────────
+  // ── PROFESSOR dedicated dashboard ──────────────────────────────────────
+  if (perfil?.papel === 'PROFESSOR') {
+    const freqGlobalProfPct = freqHoje.total > 0
+      ? Math.round(((freqHoje.presentes + freqHoje.atrasados) / freqHoje.total) * 100)
+      : 0;
+
+    return (
+      <div className="space-y-6">
+        {/* Greeting */}
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Olá, {perfil.nome?.split(' ')[0]} 👋</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Painel do Professor — {todayLabel}</p>
+        </div>
+
+        {/* Top StatCards */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard title="Minhas Turmas" value={stats.turmas || 0} icon={School} color="primary" />
+          <StatCard title="Meus Alunos" value={stats.alunos || 0} icon={Users} color="success" />
+          <StatCard title="Freq. Hoje" value={freqGlobalProfPct} icon={TrendingUp} color={freqGlobalProfPct >= 85 ? 'success' : freqGlobalProfPct >= 70 ? 'warning' : 'danger'} suffix="%" />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          {/* Frequência por turma */}
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-2 flex-row items-center justify-between">
+              <CardTitle className="text-base">Frequência das Minhas Turmas Hoje</CardTitle>
+              <Link to="/minhas-turmas" className="text-xs text-primary flex items-center gap-1 hover:underline">
+                Ver turmas <ArrowRight className="h-3 w-3" />
+              </Link>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {turmasFreqHoje.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhum dado de frequência para hoje.</p>
+              ) : turmasFreqHoje.map((t: any) => {
+                const pct = t.total_alunos > 0 ? Math.round((t.presentes / t.total_alunos) * 100) : 0;
+                return (
+                  <div key={t.turma_id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <Link
+                        to={`/frequencia/${t.turma_id}`}
+                        className="text-sm font-medium hover:text-primary transition-colors truncate max-w-[60%]"
+                      >
+                        {t.turma_nome}
+                      </Link>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+                        <span>{t.presentes}/{t.total_alunos} alunos</span>
+                        <span className={`font-semibold ${
+                          pct >= 85 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : 'text-destructive'
+                        }`}>{pct}%</span>
+                      </div>
+                    </div>
+                    <Progress
+                      value={pct}
+                      className={`h-2 ${
+                        pct >= 85 ? '[&>div]:bg-emerald-500' : pct >= 70 ? '[&>div]:bg-amber-500' : '[&>div]:bg-destructive'
+                      }`}
+                    />
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          {/* Notificações Recentes */}
+          <Card>
+            <CardHeader className="pb-2 flex-row items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Bell className="h-4 w-4 text-primary" />
+                Notificações
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {notificacoesRecentes.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhuma notificação recebida.</p>
+              ) : notificacoesRecentes.map(n => (
+                <div key={n.id} className={`rounded-lg border px-3 py-2.5 ${
+                  n.lida === 0 ? 'border-primary/30 bg-primary/5' : ''
+                }`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className={`text-sm font-medium leading-snug ${
+                      n.lida === 0 ? 'text-primary' : 'text-foreground'
+                    }`}>{n.titulo}</p>
+                    {n.lida === 0 && (
+                      <span className="h-2 w-2 rounded-full bg-primary shrink-0 mt-1" />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.mensagem}</p>
+                  <p className="text-[10px] text-muted-foreground/70 mt-1">
+                    {n.remetente_nome} ·{' '}
+                    {(() => { try { return formatDistanceToNow(new Date(n.data_envio), { addSuffix: true, locale: ptBR }); } catch { return n.data_envio; } })()}
+                  </p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Ações rápidas */}
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Ações Rápidas</CardTitle></CardHeader>
+          <CardContent className="grid gap-2 sm:grid-cols-3">
+            <Link to="/minhas-turmas" className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors">
+              <span>Minhas Turmas</span><ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </Link>
+            <Link to="/frequencia" className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors">
+              <span>Chamada do Dia</span><ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </Link>
+            <Link to="/justificativas" className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors">
+              <span>Justificativas</span><ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── Generic dashboard (SECRETARIA, DIRETOR) ───────────────────────────────
   return (
     <div className="space-y-6">
       {/* Greeting */}
@@ -376,11 +529,6 @@ export default function Dashboard() {
             <StatCard title="Alunos da Escola" value={stats.alunos || 0} icon={Users} color="success" />
             <StatCard title="Professores" value={stats.professores || 0} icon={GraduationCap} color="warning" />
             <StatCard title="Turmas" value={stats.turmas || 0} icon={School} color="primary" />
-          </>
-        ) : perfil?.papel === 'PROFESSOR' ? (
-          <>
-            <StatCard title="Minhas Turmas" value={stats.turmas || 0} icon={School} color="primary" />
-            <StatCard title="Meus Alunos" value={stats.alunos || 0} icon={Users} color="success" />
           </>
         ) : (
           <>

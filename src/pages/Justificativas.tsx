@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { db } from '@/lib/mock-db';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -7,6 +7,7 @@ import { DataTable, type Column } from '@/components/shared/DataTable';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,6 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   CheckCircle, XCircle, Clock, CalendarIcon, AlertTriangle, Bell,
+  Paperclip, ExternalLink, FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
@@ -58,6 +60,8 @@ interface ResponsavelRow {
 // ───────────────────────────────────────────────────────────────
 // Config
 // ───────────────────────────────────────────────────────────────
+
+const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ElementType }> = {
   pendente:  { label: 'Pendente',  variant: 'secondary',   icon: Clock },
@@ -116,6 +120,10 @@ export default function Justificativas() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Attachment
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [arquivoNome, setArquivoNome] = useState<string | null>(null);
+  const [arquivoBase64, setArquivoBase64] = useState<string | null>(null);
 
   // ── Detail / approval sheet ──────────────────────────────────
   const [detailSheet, setDetailSheet] = useState<JustificativaRow | null>(null);
@@ -165,6 +173,64 @@ export default function Justificativas() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ── Handle file selection ────────────────────────────────────
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      toast.error('Arquivo muito grande. O tamanho máximo é 2 MB.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setArquivoNome(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setArquivoBase64(reader.result as string);
+    };
+    reader.onerror = () => {
+      toast.error('Erro ao ler o arquivo.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearFile = () => {
+    setArquivoNome(null);
+    setArquivoBase64(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Converte data URL (base64) para Blob URL e abre em nova aba.
+  // window.open() com data URLs é bloqueado por navegadores modernos.
+  const openAnexo = (dataUrl: string) => {
+    try {
+      const [header, base64Data] = dataUrl.split(',');
+      const mimeMatch = header.match(/data:([^;]+)/);
+      const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+
+      const byteChars = atob(base64Data);
+      const byteArrays: Uint8Array[] = [];
+      for (let offset = 0; offset < byteChars.length; offset += 512) {
+        const slice = byteChars.slice(offset, offset + 512);
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
+          byteNumbers[i] = slice.charCodeAt(i);
+        }
+        byteArrays.push(new Uint8Array(byteNumbers));
+      }
+
+      const blob = new Blob(byteArrays, { type: mime });
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      // Libera o objeto URL após tempo suficiente para o browser carregá-lo
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
+    } catch (e) {
+      toast.error('Não foi possível abrir o arquivo.');
+      console.error('openAnexo error:', e);
+    }
+  };
+
   // ── Submit new justificativa ─────────────────────────────────
   const handleSubmit = async () => {
     if (!responsavelId) {
@@ -190,6 +256,7 @@ export default function Justificativas() {
         aluno_id: selectedAlunoId,
         tipo,
         descricao: descricao.trim(),
+        arquivo_url: arquivoBase64 || null,
         data_inicio: format(dateRange.from, 'yyyy-MM-dd'),
         data_fim: dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : format(dateRange.from, 'yyyy-MM-dd'),
       });
@@ -197,6 +264,7 @@ export default function Justificativas() {
       setSheetOpen(false);
       setDescricao('');
       setDateRange(undefined);
+      clearFile();
       loadData();
     } catch (err) {
       toast.error('Erro ao enviar justificativa.');
@@ -259,6 +327,12 @@ export default function Justificativas() {
       render: r => <StatusBadge status={r.status} />,
     },
     {
+      key: 'arquivo_url', header: 'Anexo', sortable: false,
+      render: r => r.arquivo_url
+        ? <Paperclip className="h-4 w-4 text-primary" title="Com anexo" />
+        : <span className="text-muted-foreground text-xs">—</span>,
+    },
+    {
       key: 'created_at', header: 'Enviada em',
       render: r => {
         try { return format(new Date(r.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }); }
@@ -275,6 +349,7 @@ export default function Justificativas() {
     setDescricao('');
     setTipo('Atestado Médico');
     setDateRange(undefined);
+    clearFile();
     if (meuFilhos.length > 0) setSelectedAlunoId(meuFilhos[0].id);
     setSheetOpen(true);
   };
@@ -311,6 +386,7 @@ export default function Justificativas() {
                   <p className="text-xs text-muted-foreground">
                     {j.tipo} · {formatDateRange(j.data_inicio, j.data_fim, j.data_falta ?? null)}
                     {j.responsavel_nome && ` · Resp: ${j.responsavel_nome}`}
+                    {j.arquivo_url && <span className="ml-1 inline-flex items-center gap-0.5 text-primary"><Paperclip className="h-3 w-3" />anexo</span>}
                   </p>
                   {j.descricao && (
                     <p className="text-xs text-muted-foreground/80 mt-0.5 truncate">{j.descricao}</p>
@@ -377,9 +453,9 @@ export default function Justificativas() {
               <p className="text-sm text-muted-foreground">Nenhum aluno vinculado à sua conta.</p>
             )}
 
-            {/* Período (DateRangePicker) */}
+            {/* Período (DateRangePicker) — datas futuras permitidas para justificativas preventivas */}
             <div className="space-y-2">
-              <Label>Período da Falta *</Label>
+              <Label>Período da Falta / Ausência *</Label>
               <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -410,7 +486,6 @@ export default function Justificativas() {
                     locale={ptBR}
                     initialFocus
                     className="pointer-events-auto"
-                    disabled={{ after: new Date() }}
                   />
                   <div className="p-2 border-t">
                     <Button
@@ -425,7 +500,7 @@ export default function Justificativas() {
                 </PopoverContent>
               </Popover>
               <p className="text-xs text-muted-foreground">
-                Para um único dia, selecione apenas a data de início.
+                Para um único dia, selecione apenas a data de início. Datas futuras são aceitas (ex: procedimentos agendados).
               </p>
             </div>
 
@@ -437,6 +512,7 @@ export default function Justificativas() {
                 <SelectContent>
                   <SelectItem value="Atestado Médico">Atestado Médico</SelectItem>
                   <SelectItem value="Consulta Médica">Consulta Médica</SelectItem>
+                  <SelectItem value="Cirurgia / Procedimento">Cirurgia / Procedimento</SelectItem>
                   <SelectItem value="Viagem">Viagem</SelectItem>
                   <SelectItem value="Luto">Luto</SelectItem>
                   <SelectItem value="Outros">Outros</SelectItem>
@@ -455,6 +531,40 @@ export default function Justificativas() {
                 maxLength={500}
               />
               <p className="text-xs text-muted-foreground text-right">{descricao.length}/500</p>
+            </div>
+
+            {/* Anexo */}
+            <div className="space-y-2">
+              <Label>Anexo (opcional)</Label>
+              {arquivoNome ? (
+                <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2">
+                  <FileText className="h-4 w-4 text-primary shrink-0" />
+                  <span className="text-sm truncate flex-1">{arquivoNome}</span>
+                  <button
+                    onClick={clearFile}
+                    className="text-xs text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                  >
+                    Remover
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="flex items-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 px-4 py-3 cursor-pointer hover:border-primary/50 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    Clique para anexar (imagem ou PDF, máx. 2 MB)
+                  </span>
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={handleFileChange}
+              />
             </div>
 
             <Button onClick={handleSubmit} className="w-full" disabled={submitting}>
@@ -487,6 +597,22 @@ export default function Justificativas() {
                 </div>
                 {detailSheet.observacao_diretor && (
                   <InfoRow label="Observação do Diretor" value={detailSheet.observacao_diretor} />
+                )}
+
+                {/* Botão Ver Anexo */}
+                {detailSheet.arquivo_url && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Anexo</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => openAnexo(detailSheet.arquivo_url!)}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Visualizar Anexo
+                    </Button>
+                  </div>
                 )}
               </div>
 

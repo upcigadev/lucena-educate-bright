@@ -13,7 +13,11 @@ import { type AlunoRow, getAlunoColumns } from '@/components/alunos/AlunoColumns
 import { ResponsavelTab } from '@/components/alunos/ResponsavelTab';
 import { BiometriaTab } from '@/components/alunos/BiometriaTab';
 import { useAuthStore } from '@/stores/authStore';
-import { Trash2 } from 'lucide-react';
+import { FileText, Trash2, ShieldAlert, Plus } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface Serie { id: string; nome: string; escola_id: string; horario_inicio: string | null; tolerancia_min: number | null; limite_max: string | null; }
 interface Turma { id: string; nome: string; serie_id: string; escola_id: string; horario_inicio: string | null; tolerancia_min: number | null; limite_max: string | null; }
@@ -39,6 +43,49 @@ function addMinutesToTime(time: string, minutes: number): string {
   return minutesToHHMM(base + minutes);
 }
 
+// ── Declaração de Matrícula ──────────────────────────────────────────────────
+function gerarDeclaracao(aluno: AlunoRow, escolaNome: string, escolaEndereco?: string) {
+  const hoje = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const nascimento = aluno.data_nascimento
+    ? (() => { try { return format(new Date(aluno.data_nascimento + 'T12:00'), 'dd/MM/yyyy', { locale: ptBR }); } catch { return aluno.data_nascimento; } })()
+    : null;
+  const serie = aluno.serie_nome || '';
+  const turma = aluno.turma_nome && aluno.turma_nome !== 'Sem turma' ? aluno.turma_nome : '';
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Declaração de Matrícula</title>
+  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Times New Roman',serif;font-size:12pt;color:#000;background:#fff;padding:2.5cm}
+  .hdr{text-align:center;border-bottom:2px solid #000;padding-bottom:14px;margin-bottom:30px}
+  .hdr h1{font-size:15pt;text-transform:uppercase;letter-spacing:.5px}.hdr p{font-size:10pt;color:#444;margin-top:3px}
+  .ttl{text-align:center;margin:28px 0}.ttl h2{font-size:13pt;text-transform:uppercase;letter-spacing:1px;text-decoration:underline}
+  .body{line-height:1.9;text-align:justify;margin-bottom:20px}
+  table{width:100%;border-collapse:collapse;border:1px solid #ccc;margin:24px 0}
+  td{padding:5px 10px;font-size:11pt}td:first-child{font-weight:bold;width:38%;background:#f9f9f9}
+  .sig{margin-top:60px;text-align:center}.sig .ln{border-top:1px solid #000;width:280px;margin:0 auto 6px}
+  .date{text-align:right;margin-top:28px;font-size:11pt}
+  @media print{body{padding:0}@page{size:A4;margin:2.2cm}}</style></head>
+  <body>
+  <div class="hdr"><h1>${escolaNome}</h1>${escolaEndereco ? `<p>${escolaEndereco}</p>` : ''}</div>
+  <div class="ttl"><h2>Declaração de Matrícula</h2></div>
+  <div class="body"><p>Declaramos, para os devidos fins, que o(a) aluno(a) abaixo identificado(a) encontra-se devidamente matriculado(a) nesta instituição de ensino no ano letivo de <strong>${new Date().getFullYear()}</strong>.</p></div>
+  <table><tbody>
+    <tr><td>Nome completo:</td><td>${aluno.nome_completo}</td></tr>
+    <tr><td>Matrícula:</td><td>${aluno.matricula}</td></tr>
+    ${nascimento ? `<tr><td>Data de nascimento:</td><td>${nascimento}</td></tr>` : ''}
+    <tr><td>Escola:</td><td>${escolaNome}</td></tr>
+    ${serie ? `<tr><td>Série:</td><td>${serie}</td></tr>` : ''}
+    ${turma ? `<tr><td>Turma:</td><td>${turma}</td></tr>` : ''}
+    <tr><td>Situação:</td><td>Matriculado(a) — Ativo(a)</td></tr>
+    <tr><td>Ano letivo:</td><td>${new Date().getFullYear()}</td></tr>
+  </tbody></table>
+  <p class="date">Lucena, ${hoje}</p>
+  <div class="sig"><div class="ln"></div><p>Secretaria Escolar — ${escolaNome}</p></div>
+  <script>window.onload=()=>window.print();<\/script></body></html>`;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (win) setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  else URL.revokeObjectURL(url);
+}
+
 export default function Alunos() {
   const [alunos, setAlunos] = useState<AlunoRow[]>([]);
   const [turmas, setTurmas] = useState<Turma[]>([]);
@@ -47,6 +94,10 @@ export default function Alunos() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AlunoRow | null>(null);
   const [pendingResp, setPendingResp] = useState<{ id: string; nome: string } | null>(null);
+  // Ocorrências do aluno sendo editado
+  const [ocorrencias, setOcorrencias] = useState<any[]>([]);
+  const [ocorrenciaForm, setOcorrenciaForm] = useState({ titulo: '', descricao: '', gravidade: 'Leve', data: new Date().toISOString().split('T')[0] });
+  const [savingOcorrencia, setSavingOcorrencia] = useState(false);
   const [form, setForm] = useState({
     nome_completo: '', matricula: '', data_nascimento: '',
     escola_id: '', serie_id: '', turma_id: '',
@@ -105,6 +156,9 @@ export default function Alunos() {
     setEditing(row);
     const turma = turmas.find(t => t.id === row.turma_id);
     setForm({ nome_completo: row.nome_completo, matricula: row.matricula, data_nascimento: row.data_nascimento || '', escola_id: row.escola_id, serie_id: turma?.serie_id || '', turma_id: row.turma_id || '', resp_nome: '', resp_cpf: '', resp_telefone: '', resp_parentesco: 'Pai/Mãe' });
+    // Carrega ocorrências do aluno
+    db.ocorrencias.listByAluno(row.id).then(res => setOcorrencias((res.data || []) as any[]));
+    setOcorrenciaForm({ titulo: '', descricao: '', gravidade: 'Leve', data: new Date().toISOString().split('T')[0] });
     setOpen(true);
   };
 
@@ -236,6 +290,29 @@ export default function Alunos() {
   const filteredSeries = form.escola_id ? series.filter(s => s.escola_id === form.escola_id) : [];
   const filteredTurmas = form.serie_id ? turmas.filter(t => t.serie_id === form.serie_id && t.escola_id === form.escola_id) : [];
 
+  const handleSaveOcorrencia = async () => {
+    const { perfil } = useAuthStore.getState();
+    if (!editing || !perfil) return;
+    if (!ocorrenciaForm.titulo.trim()) { toast.error('Título obrigatório.'); return; }
+    setSavingOcorrencia(true);
+    try {
+      await db.ocorrencias.insert({
+        aluno_id: editing.id,
+        usuario_id: perfil.id,
+        titulo: ocorrenciaForm.titulo.trim(),
+        descricao: ocorrenciaForm.descricao.trim() || null,
+        gravidade: ocorrenciaForm.gravidade,
+        data: ocorrenciaForm.data,
+      });
+      toast.success('Ocorrência registrada.');
+      setOcorrenciaForm({ titulo: '', descricao: '', gravidade: 'Leve', data: new Date().toISOString().split('T')[0] });
+      const res = await db.ocorrencias.listByAluno(editing.id);
+      setOcorrencias((res.data || []) as any[]);
+    } finally {
+      setSavingOcorrencia(false);
+    }
+  };
+
   // Coluna de ação de exclusão
   const deleteColumn = {
     key: 'delete_action',
@@ -252,7 +329,27 @@ export default function Alunos() {
     ),
   };
 
-  const columns = [...getAlunoColumns(), deleteColumn];
+  // Coluna de Declaração de Matrícula
+  const docColumn = {
+    key: 'doc_action',
+    header: '',
+    sortable: false,
+    render: (r: AlunoRow) => (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          const escola = escolas.find(e => e.id === r.escola_id);
+          gerarDeclaracao(r, escola?.nome || 'Escola', undefined);
+        }}
+        className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+        title="Gerar Declaração de Matrícula"
+      >
+        <FileText className="h-4 w-4" />
+      </button>
+    ),
+  };
+
+  const columns = [...getAlunoColumns(), docColumn, deleteColumn];
 
   return (
     <div>
@@ -263,10 +360,13 @@ export default function Alunos() {
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader><SheetTitle>{editing ? 'Editar Aluno' : 'Novo Aluno'}</SheetTitle></SheetHeader>
           <Tabs defaultValue="aluno" className="mt-4">
-            <TabsList className="w-full">
-              <TabsTrigger value="aluno" className="flex-1">Dados do Aluno</TabsTrigger>
-              <TabsTrigger value="resp" className="flex-1">Responsável</TabsTrigger>
-              <TabsTrigger value="biometria" className="flex-1">Biometria</TabsTrigger>
+            <TabsList className="w-full grid grid-cols-4">
+              <TabsTrigger value="aluno" className="text-xs">Dados</TabsTrigger>
+              <TabsTrigger value="resp" className="text-xs">Responsável</TabsTrigger>
+              <TabsTrigger value="biometria" className="text-xs">Biometria</TabsTrigger>
+              <TabsTrigger value="ocorrencias" className="text-xs">
+                Ocorrências {ocorrencias.length > 0 && <span className="ml-1 rounded-full bg-destructive text-destructive-foreground text-[10px] px-1.5">{ocorrencias.length}</span>}
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="aluno">
               <div className="space-y-4 mt-3">
@@ -306,6 +406,67 @@ export default function Alunos() {
               />
             </TabsContent>
             <TabsContent value="biometria"><BiometriaTab aluno={form} /></TabsContent>
+
+            {/* Aba de Ocorrências — disponível apenas ao editar */}
+            {editing && (
+              <TabsContent value="ocorrencias" className="space-y-4 mt-3">
+                {/* Nova ocorrência inline */}
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                  <p className="text-xs font-semibold flex items-center gap-1.5">
+                    <ShieldAlert className="h-3.5 w-3.5 text-destructive" />
+                    Nova Ocorrência
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">Título *</Label>
+                      <Input value={ocorrenciaForm.titulo} onChange={e => setOcorrenciaForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Agressão verbal" className="h-8 text-sm" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Data</Label>
+                      <Input type="date" value={ocorrenciaForm.data} onChange={e => setOcorrenciaForm(f => ({ ...f, data: e.target.value }))} className="h-8 text-sm" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Gravidade</Label>
+                      <Select value={ocorrenciaForm.gravidade} onValueChange={v => setOcorrenciaForm(f => ({ ...f, gravidade: v }))}>
+                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Leve">Leve</SelectItem>
+                          <SelectItem value="Média">Média</SelectItem>
+                          <SelectItem value="Grave">Grave</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">Descrição</Label>
+                      <Textarea value={ocorrenciaForm.descricao} onChange={e => setOcorrenciaForm(f => ({ ...f, descricao: e.target.value }))} rows={2} className="text-sm" />
+                    </div>
+                  </div>
+                  <Button size="sm" className="gap-1.5 w-full" onClick={handleSaveOcorrencia} disabled={savingOcorrencia}>
+                    <Plus className="h-3.5 w-3.5" /> {savingOcorrencia ? 'Salvando…' : 'Registrar'}
+                  </Button>
+                </div>
+
+                {/* Histórico */}
+                <div className="space-y-2">
+                  {ocorrencias.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">Nenhuma ocorrência registrada.</p>
+                  ) : ocorrencias.map((o: any) => (
+                    <div key={o.id} className="rounded-lg border px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium leading-snug">{o.titulo}</p>
+                        <Badge variant="outline" className={`text-[10px] shrink-0 ${
+                          o.gravidade === 'Grave'  ? 'bg-destructive/15 text-destructive border-destructive/30' :
+                          o.gravidade === 'Média'  ? 'bg-amber-500/15 text-amber-700 border-amber-300' :
+                          'bg-blue-500/15 text-blue-700 border-blue-300'
+                        }`}>{o.gravidade}</Badge>
+                      </div>
+                      {o.descricao && <p className="text-xs text-muted-foreground mt-0.5">{o.descricao}</p>}
+                      <p className="text-[10px] text-muted-foreground/70 mt-0.5">{o.data} · {o.registrado_por}</p>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
         </SheetContent>
       </Sheet>

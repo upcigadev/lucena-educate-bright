@@ -66,6 +66,8 @@ export function ProfileModal({ open, onClose }: Props) {
 
   if (!perfil) return null;
 
+  // previewUrl: foto recém selecionada localmente (antes de salvar)
+  // perfil.avatar_url: foto persistida no banco
   const currentAvatar = previewUrl ?? perfil.avatar_url ?? null;
   const initials = perfil.nome
     .split(' ')

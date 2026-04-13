@@ -4,13 +4,24 @@ import { useAuthStore } from '@/stores/authStore';
 import { db } from '@/lib/mock-db';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { BookOpen, Users, MapPin, ArrowRight, Clock } from 'lucide-react';
+import { BookOpen, Users, MapPin, ArrowRight, Clock, MessageSquare } from 'lucide-react';
+import { SendNotificationModal } from '@/components/shared/SendNotificationModal';
+import { toast } from 'sonner';
+
+interface DiretorInfo {
+  nome: string;
+  usuario_id: string;
+  escola_id: string;
+}
 
 export default function MinhasTurmas() {
   const { perfil } = useAuthStore();
   const navigate = useNavigate();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  // Notificação para o Diretor
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [diretorInfo, setDiretorInfo] = useState<DiretorInfo | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -18,7 +29,17 @@ export default function MinhasTurmas() {
       setLoading(true);
       try {
         const { data } = await db.turmas.listByProfessor(perfil.id);
-        setTurmas((data as any[]) || []);
+        const turmaList = (data as any[]) || [];
+        setTurmas(turmaList);
+
+        // Busca o Diretor da escola do professor (usa a primeira escola encontrada)
+        const escolaIds = [...new Set(turmaList.map((t: any) => t.escola_id))] as string[];
+        if (escolaIds.length > 0) {
+          const { data: dir } = await db.diretores.getByEscolaComUsuarioId(escolaIds[0]);
+          if (dir) {
+            setDiretorInfo({ nome: (dir as any).nome, usuario_id: (dir as any).usuario_id, escola_id: escolaIds[0] });
+          }
+        }
       } catch (error) {
         console.error('Erro ao carregar turmas:', error);
       } finally {
@@ -27,6 +48,14 @@ export default function MinhasTurmas() {
     };
     load();
   }, [perfil]);
+
+  const handleContatarDiretor = () => {
+    if (!diretorInfo) {
+      toast.error('Nenhum Diretor encontrado para as suas escolas.');
+      return;
+    }
+    setNotifOpen(true);
+  };
 
   if (loading) {
     return (
@@ -38,14 +67,27 @@ export default function MinhasTurmas() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <BookOpen className="h-6 w-6 text-primary" />
-          Minhas Turmas
-        </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Selecione uma turma para visualizar a lista de alunos e chamada.
-        </p>
+      <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <BookOpen className="h-6 w-6 text-primary" />
+            Minhas Turmas
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Selecione uma turma para visualizar a lista de alunos e chamada.
+          </p>
+        </div>
+        {diretorInfo && (
+          <Button
+            variant="outline"
+            className="gap-2 shrink-0"
+            onClick={handleContatarDiretor}
+            id="btn-contatar-diretor"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Mensagem ao Diretor
+          </Button>
+        )}
       </div>
 
       {turmas.length === 0 ? (
@@ -68,8 +110,8 @@ export default function MinhasTurmas() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col justify-end gap-2">
-                <Button 
-                  className="w-full flex items-center justify-between" 
+                <Button
+                  className="w-full flex items-center justify-between"
                   variant="outline"
                   onClick={() => navigate(`/escolas/${turma.escola_id}/turma/${turma.id}`)}
                 >
@@ -79,9 +121,9 @@ export default function MinhasTurmas() {
                   </span>
                   <ArrowRight className="h-4 w-4" />
                 </Button>
-                
-                <Button 
-                  className="w-full flex items-center justify-between bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary transition-colors border-0" 
+
+                <Button
+                  className="w-full flex items-center justify-between bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary transition-colors border-0"
                   variant="outline"
                   onClick={() => navigate(`/frequencia/${turma.id}`)}
                 >
@@ -95,6 +137,16 @@ export default function MinhasTurmas() {
             </Card>
           ))}
         </div>
+      )}
+
+      {diretorInfo && (
+        <SendNotificationModal
+          open={notifOpen}
+          onClose={() => setNotifOpen(false)}
+          destinatarioId={diretorInfo.usuario_id}
+          destinatarioNome={`Dir. ${diretorInfo.nome}`}
+          defaultTitulo="Solicitação ao Diretor"
+        />
       )}
     </div>
   );

@@ -1,7 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   School, Users, GraduationCap, BookOpen, UserCheck, UserCog,
-  LayoutDashboard, ClipboardList, Baby, X, ChevronLeft, ChevronRight, Wifi, Radio
+  LayoutDashboard, ClipboardList, Baby, X, ChevronLeft, ChevronRight, Wifi, Radio,
+  AlertTriangle, ShieldAlert, Megaphone,
 } from 'lucide-react';
 import { useAuthStore, type Papel } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
@@ -24,6 +25,9 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Chamada do Dia', href: '/frequencia', icon: Radio },
     { label: 'Config. IoT', href: '/iot-config', icon: Wifi },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
+    { label: 'Busca Ativa', href: '/busca-ativa', icon: AlertTriangle },
+    { label: 'Ocorrências', href: '/ocorrencias', icon: ShieldAlert },
+    { label: 'Mural', href: '/mural', icon: Megaphone },
   ],
   DIRETOR: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -32,11 +36,16 @@ const menuByPapel: Record<Papel, NavItem[]> = {
     { label: 'Alunos', href: '/alunos', icon: Users },
     { label: 'Chamada do Dia', href: '/frequencia', icon: Radio },
     { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
+    { label: 'Busca Ativa', href: '/busca-ativa', icon: AlertTriangle },
+    { label: 'Ocorrências', href: '/ocorrencias', icon: ShieldAlert },
+    { label: 'Mural', href: '/mural', icon: Megaphone },
   ],
   PROFESSOR: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Minhas Turmas', href: '/minhas-turmas', icon: BookOpen },
     { label: 'Alunos', href: '/alunos', icon: Users },
+    { label: 'Ocorrências', href: '/ocorrencias', icon: ShieldAlert },
+    { label: 'Justificativas', href: '/justificativas', icon: ClipboardList },
   ],
   RESPONSAVEL: [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },

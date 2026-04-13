@@ -215,6 +215,21 @@ CREATE TABLE IF NOT EXISTS turma_professores (
   turma_id TEXT NOT NULL REFERENCES turmas(id),
   professor_id TEXT NOT NULL REFERENCES professores(id)
 );
+
+CREATE TABLE IF NOT EXISTS ocorrencias (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  aluno_id TEXT NOT NULL REFERENCES alunos(id),
+  usuario_id TEXT NOT NULL REFERENCES usuarios(id),
+  titulo TEXT NOT NULL,
+  descricao TEXT,
+  gravidade TEXT NOT NULL DEFAULT 'Leve',
+  data TEXT NOT NULL DEFAULT (date('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_frequencias_data ON frequencias(data);
+CREATE INDEX IF NOT EXISTS idx_frequencias_aluno_data ON frequencias(aluno_id, data);
+CREATE INDEX IF NOT EXISTS idx_ocorrencias_aluno ON ocorrencias(aluno_id);
 `;
 
 // ===== Seed Data =====
@@ -370,6 +385,25 @@ async function initDatabase(): Promise<SqlJsDatabase> {
     if (!escolaCols.includes('limite_max'))     db.run('ALTER TABLE escolas ADD COLUMN limite_max TEXT');
   } catch (e) {
     console.warn('Failed to migrate `escolas` schedule columns:', e);
+  }
+
+  // Migration: create ocorrencias table if missing
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS ocorrencias (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      aluno_id TEXT NOT NULL REFERENCES alunos(id),
+      usuario_id TEXT NOT NULL REFERENCES usuarios(id),
+      titulo TEXT NOT NULL,
+      descricao TEXT,
+      gravidade TEXT NOT NULL DEFAULT 'Leve',
+      data TEXT NOT NULL DEFAULT (date('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    db.run('CREATE INDEX IF NOT EXISTS idx_frequencias_data ON frequencias(data)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_frequencias_aluno_data ON frequencias(aluno_id, data)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_ocorrencias_aluno ON ocorrencias(aluno_id)');
+  } catch (e) {
+    console.warn('Failed to migrate ocorrencias table:', e);
   }
 
   // Seed only if empty

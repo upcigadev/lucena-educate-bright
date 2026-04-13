@@ -397,7 +397,7 @@ export const db = {
   diretores: {
     list: async () => {
       const rows = await query(`
-        SELECT d.*, u.nome, u.cpf, e.nome as escola_nome
+        SELECT d.*, u.nome, u.cpf, u.avatar_url, e.nome as escola_nome
         FROM diretores d
         JOIN usuarios u ON d.usuario_id = u.id AND u.ativo = 1
         JOIN escolas e ON d.escola_id = e.id
@@ -439,12 +439,22 @@ export const db = {
       `, [escolaId]);
       return ok(rows[0] || null);
     },
+    getByEscolaComUsuarioId: async (escolaId: string) => {
+      const rows = await query<{ nome: string; usuario_id: string }>(`
+        SELECT u.nome, u.id as usuario_id
+        FROM diretores d
+        JOIN usuarios u ON d.usuario_id = u.id AND u.ativo = 1
+        WHERE d.escola_id = ?
+        LIMIT 1
+      `, [escolaId]);
+      return ok(rows[0] || null);
+    },
   },
 
   professores: {
     list: async () => {
       const rows = await query(`
-        SELECT p.id, p.usuario_id, u.nome, u.cpf
+        SELECT p.id, p.usuario_id, u.nome, u.cpf, u.avatar_url
         FROM professores p
         JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
         ORDER BY u.nome
@@ -463,7 +473,7 @@ export const db = {
     },
     listAll: async () => {
       const rows = await query(`
-        SELECT p.id, p.usuario_id, u.nome
+        SELECT p.id, p.usuario_id, u.nome, u.avatar_url
         FROM professores p
         JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
         ORDER BY u.nome
@@ -472,7 +482,7 @@ export const db = {
     },
     listByEscola: async (escolaId: string) => {
       const rows = await query(`
-        SELECT p.id, p.usuario_id, u.nome, u.cpf
+        SELECT p.id, p.usuario_id, u.nome, u.cpf, u.avatar_url
         FROM professores p
         JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
         JOIN professor_escolas pe ON p.id = pe.professor_id
@@ -913,5 +923,250 @@ export const db = {
        await run('UPDATE notificacoes SET lida = 1 WHERE destinatario_id = ?', [usuarioId]);
        return ok(null);
     }
+  },
+
+  // ── Busca Ativa (Evasão Escolar) ─────────────────────────────────────────
+  buscaAtiva: {
+    alunosEmRisco: async (escolaId?: string | null, professorUsuarioId?: string | null) => {
+      const params: any[] = [];
+      let whereClause = 'WHERE a.ativo = 1';
+      if (escolaId) { whereClause += ' AND a.escola_id = ?'; params.push(escolaId); }
+      if (professorUsuarioId) {
+        whereClause += ` AND a.turma_id IN (
+          SELECT tp.turma_id FROM turma_professores tp
+          JOIN professores p ON tp.professor_id = p.id
+          WHERE p.usuario_id = ?
+        )`;
+        params.push(professorUsuarioId);
+      }
+
+      // Query 1: frequência baixa no mês corrente
+      const lowAttendance = await query<any>(`
+        SELECT
+          a.id, a.nome_completo, a.matricula, a.escola_id, a.turma_id,
+          COALESCE(t.nome, 'Sem turma') as turma_nome,
+          COALESCE(e.nome, '') as escola_nome,
+          COUNT(f.id) as total_registros,
+          SUM(CASE WHEN f.status IN ('presente', 'atrasado') THEN 1 ELSE 0 END) as presentes,
+          ROUND(100.0 * SUM(CASE WHEN f.status IN ('presente', 'atrasado') THEN 1 ELSE 0 END)
+            / NULLIF(COUNT(f.id), 0), 1) as pct_presenca
+        FROM alunos a
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        LEFT JOIN frequencias f ON a.id = f.aluno_id
+          AND strftime('%Y-%m', f.data) = strftime('%Y-%m', 'now')
+        ${whereClause}
+        GROUP BY a.id, a.nome_completo, a.matricula, a.escola_id, a.turma_id, t.nome, e.nome
+        HAVING COUNT(f.id) >= 3
+        ORDER BY pct_presenca ASC
+      `, params);
+
+      // Query 2: frequências recentes para detectar faltas consecutivas (últimos 14 dias)
+      const recentParams: any[] = [];
+      let recentWhere = "WHERE a.ativo = 1 AND f.data >= date('now', '-14 days')";
+      if (escolaId) { recentWhere += ' AND a.escola_id = ?'; recentParams.push(escolaId); }
+      if (professorUsuarioId) {
+        recentWhere += ` AND a.turma_id IN (
+          SELECT tp.turma_id FROM turma_professores tp
+          JOIN professores p ON tp.professor_id = p.id WHERE p.usuario_id = ?
+        )`;
+        recentParams.push(professorUsuarioId);
+      }
+
+      const recentFreqs = await query<any>(`
+        SELECT f.aluno_id, f.data, f.status
+        FROM frequencias f JOIN alunos a ON f.aluno_id = a.id
+        ${recentWhere}
+        ORDER BY f.aluno_id, f.data DESC
+      `, recentParams);
+
+      // Calcula faltas consecutivas por aluno (statuses já ordenados DESC por data)
+      const recentByAluno = new Map<string, string[]>();
+      for (const row of recentFreqs) {
+        const id = row.aluno_id as string;
+        if (!recentByAluno.has(id)) recentByAluno.set(id, []);
+        recentByAluno.get(id)!.push(row.status as string);
+      }
+      const consecutivasByAluno = new Map<string, number>();
+      for (const [alunoId, statuses] of recentByAluno) {
+        let count = 0;
+        for (const s of statuses) { if (s === 'falta') count++; else break; }
+        consecutivasByAluno.set(alunoId, count);
+      }
+
+      // Merge: baixa frequência + faltas consecutivas
+      const result = new Map<string, any>();
+      for (const a of lowAttendance) {
+        const consecutivas = consecutivasByAluno.get(a.id as string) || 0;
+        result.set(a.id as string, { ...a, faltas_consecutivas: consecutivas });
+      }
+
+      // Alunos com 3+ consecutivas que ainda não estão na lista (< 3 registros no mês)
+      for (const [alunoId, consec] of consecutivasByAluno) {
+        if (consec >= 3 && !result.has(alunoId)) {
+          const alunoRows = await query<any>(`
+            SELECT a.id, a.nome_completo, a.matricula, a.escola_id, a.turma_id,
+              COALESCE(t.nome, 'Sem turma') as turma_nome, COALESCE(e.nome, '') as escola_nome
+            FROM alunos a
+            LEFT JOIN turmas t ON a.turma_id = t.id
+            LEFT JOIN escolas e ON a.escola_id = e.id
+            WHERE a.id = ?`, [alunoId]);
+          if (alunoRows.length > 0) {
+            result.set(alunoId, { ...alunoRows[0], pct_presenca: null, total_registros: 0, presentes: 0, faltas_consecutivas: consec });
+          }
+        }
+      }
+
+      const filtered = [...result.values()].filter(
+        a => (a.pct_presenca !== null && (a.pct_presenca as number) < 75) || (a.faltas_consecutivas as number) >= 3
+      );
+      return ok(filtered);
+    },
+
+    getResponsaveis: async (alunoId: string) => {
+      const rows = await query<{ usuario_id: string; nome: string }>(`
+        SELECT u.id as usuario_id, u.nome
+        FROM aluno_responsaveis ar
+        JOIN responsaveis r ON ar.responsavel_id = r.id
+        JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        WHERE ar.aluno_id = ?
+      `, [alunoId]);
+      return ok(rows);
+    },
+  },
+
+  // ── Ocorrências Disciplinares ─────────────────────────────────────────────
+  ocorrencias: {
+    insert: async (data: { aluno_id: string; usuario_id: string; titulo: string; descricao?: string | null; gravidade?: string; data?: string }) => {
+      const id = generateId();
+      await run(
+        'INSERT INTO ocorrencias (id, aluno_id, usuario_id, titulo, descricao, gravidade, data) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [id, data.aluno_id, data.usuario_id, data.titulo, data.descricao || null, data.gravidade || 'Leve', data.data || new Date().toISOString().split('T')[0]]
+      );
+      return ok({ id });
+    },
+    listByAluno: async (alunoId: string) => {
+      const rows = await query(`
+        SELECT o.*, u.nome as registrado_por
+        FROM ocorrencias o JOIN usuarios u ON o.usuario_id = u.id
+        WHERE o.aluno_id = ? ORDER BY o.data DESC, o.created_at DESC
+      `, [alunoId]);
+      return ok(rows);
+    },
+    listByEscola: async (escolaId: string) => {
+      const rows = await query(`
+        SELECT o.*, u.nome as registrado_por, a.nome_completo as aluno_nome,
+          COALESCE(t.nome, 'Sem turma') as turma_nome
+        FROM ocorrencias o
+        JOIN usuarios u ON o.usuario_id = u.id
+        JOIN alunos a ON o.aluno_id = a.id AND a.escola_id = ? AND a.ativo = 1
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        ORDER BY o.data DESC, o.created_at DESC
+      `, [escolaId]);
+      return ok(rows);
+    },
+    listByProfessor: async (usuarioId: string) => {
+      const rows = await query(`
+        SELECT o.*, u.nome as registrado_por, a.nome_completo as aluno_nome,
+          COALESCE(t.nome, 'Sem turma') as turma_nome
+        FROM ocorrencias o
+        JOIN usuarios u ON o.usuario_id = u.id
+        JOIN alunos a ON o.aluno_id = a.id AND a.ativo = 1
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        JOIN turma_professores tp ON a.turma_id = tp.turma_id
+        JOIN professores p ON tp.professor_id = p.id AND p.usuario_id = ?
+        ORDER BY o.data DESC, o.created_at DESC
+      `, [usuarioId]);
+      return ok(rows);
+    },
+    listAll: async () => {
+      const rows = await query(`
+        SELECT o.*, u.nome as registrado_por, a.nome_completo as aluno_nome,
+          COALESCE(t.nome, 'Sem turma') as turma_nome, COALESCE(e.nome, '') as escola_nome
+        FROM ocorrencias o
+        JOIN usuarios u ON o.usuario_id = u.id
+        JOIN alunos a ON o.aluno_id = a.id
+        LEFT JOIN turmas t ON a.turma_id = t.id
+        LEFT JOIN escolas e ON a.escola_id = e.id
+        ORDER BY o.data DESC, o.created_at DESC
+      `);
+      return ok(rows);
+    },
+    delete: async (id: string) => {
+      await run('DELETE FROM ocorrencias WHERE id = ?', [id]);
+      return ok(null);
+    },
+  },
+
+  // ── Mural (Comunicados em Massa) ──────────────────────────────────────────
+  mural: {
+    getDestinatarios: async (
+      alvo: 'escola' | 'professores' | 'turma' | 'responsaveis',
+      escolaId?: string | null,
+      turmaId?: string | null
+    ) => {
+      let rows: any[] = [];
+
+      if (alvo === 'professores' && escolaId) {
+        rows = await query<{ usuario_id: string; nome: string }>(`
+          SELECT DISTINCT u.id as usuario_id, u.nome
+          FROM professores p
+          JOIN professor_escolas pe ON p.id = pe.professor_id
+          JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
+          WHERE pe.escola_id = ?
+        `, [escolaId]);
+
+      } else if (alvo === 'responsaveis' && escolaId) {
+        rows = await query<{ usuario_id: string; nome: string }>(`
+          SELECT DISTINCT u.id as usuario_id, u.nome
+          FROM responsaveis r
+          JOIN aluno_responsaveis ar ON r.id = ar.responsavel_id
+          JOIN alunos a ON ar.aluno_id = a.id AND a.ativo = 1 AND a.escola_id = ?
+          JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        `, [escolaId]);
+
+      } else if (alvo === 'turma' && turmaId) {
+        rows = await query<{ usuario_id: string; nome: string }>(`
+          SELECT DISTINCT u.id as usuario_id, u.nome
+          FROM responsaveis r
+          JOIN aluno_responsaveis ar ON r.id = ar.responsavel_id
+          JOIN alunos a ON ar.aluno_id = a.id AND a.ativo = 1 AND a.turma_id = ?
+          JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        `, [turmaId]);
+
+      } else if (alvo === 'escola' && escolaId) {
+        // Professores + Responsáveis da escola
+        const profs = await query<{ usuario_id: string; nome: string }>(`
+          SELECT DISTINCT u.id as usuario_id, u.nome
+          FROM professores p
+          JOIN professor_escolas pe ON p.id = pe.professor_id
+          JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
+          WHERE pe.escola_id = ?
+        `, [escolaId]);
+        const resps = await query<{ usuario_id: string; nome: string }>(`
+          SELECT DISTINCT u.id as usuario_id, u.nome
+          FROM responsaveis r
+          JOIN aluno_responsaveis ar ON r.id = ar.responsavel_id
+          JOIN alunos a ON ar.aluno_id = a.id AND a.ativo = 1 AND a.escola_id = ?
+          JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        `, [escolaId]);
+        rows = [...profs, ...resps];
+      }
+
+      return ok(rows);
+    },
+
+    listComunicadosEnviados: async (remetenteId: string) => {
+      // Retorna a última mensagem para cada título/horário (agrupamento por mensagens em massa)
+      const rows = await query(`
+        SELECT titulo, mensagem, data_envio, COUNT(*) as total_destinatarios
+        FROM notificacoes
+        WHERE remetente_id = ?
+        GROUP BY titulo, mensagem, strftime('%Y-%m-%dT%H:%M', data_envio)
+        ORDER BY data_envio DESC
+        LIMIT 20
+      `, [remetenteId]);
+      return ok(rows);
+    },
   },
 };
