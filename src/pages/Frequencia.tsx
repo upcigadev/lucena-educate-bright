@@ -111,9 +111,7 @@ export default function Frequencia() {
             : fimMin != null && nowMin > fimMin
             ? 'atrasado'
             : 'presente';
-        const avatarUrl = row.idface_user_id
-          ? `http://localhost:3000/api/device/photo/${row.idface_user_id}`
-          : null;
+        const avatarUrl = row.avatar_url || null;
         return {
           id: `hist-${row.id}`,
           nome: row.nome_completo ?? `Matrícula ${row.matricula}`,
@@ -208,15 +206,20 @@ export default function Frequencia() {
             const [hh, mm] = horario.split(':').map(Number);
             const nowMin = hh * 60 + mm;
 
-            // Determine status using turma's horario_inicio (same logic as TurmaDetalhe).
-            const horarioInicio = (aluno as any)?.horario_inicio ?? null;
-            const limiteHoraMin = timeToMin(horarioInicio);
+            // Determina status usando horário efetivo: aluno > turma > escola
+            const horarioInicio   = (aluno as any)?.horario_inicio ?? null;
+            const toleranciaMin   = Number((aluno as any)?.tolerancia_min) || 0;
+            const horarioInicioMin = timeToMin(horarioInicio);
+            // Limite para "presente": horario_inicio + tolerancia (ex: 08:00 + 15 min = 08:15)
+            const limitePresente = horarioInicioMin != null ? horarioInicioMin + toleranciaMin : null;
             const status: AccessCard['status'] =
               !aluno
                 ? 'acesso'
-                : limiteHoraMin != null && nowMin > limiteHoraMin
-                ? 'atrasado'
-                : 'presente';
+                : (limitePresente == null)
+                ? 'presente' // sem horário configurado → presente
+                : nowMin <= limitePresente
+                ? 'presente'
+                : 'atrasado';
 
             // ── Persist to SQLite ──────────────────────────────────────
             if (aluno) {
@@ -249,10 +252,7 @@ export default function Frequencia() {
             }
 
             const lookupId = logUserId ?? '';
-            const proxyUrl = aluno?.idface_user_id
-                ? `http://localhost:3000/api/device/photo/${aluno.idface_user_id}`
-                : null;
-            const photo = photoBuffer.current.get(lookupId) ?? proxyUrl;
+            const photo = photoBuffer.current.get(lookupId) ?? aluno?.avatar_url ?? null;
 
             const card: AccessCard = {
               id: `${lookupId}-${Date.now()}`,

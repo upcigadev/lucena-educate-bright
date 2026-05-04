@@ -24,6 +24,7 @@ interface AlunoRow {
   idface_user_id: string | null;
   turma_id: string | null;
   escola_id: string;
+  avatar_url?: string | null;
 }
 
 interface FreqRecord {
@@ -377,7 +378,7 @@ export default function FrequenciaTurma() {
                       <TableCell>
                         <Avatar className="h-9 w-9">
                           <AvatarImage
-                            src={aluno.idface_user_id ? `http://localhost:3000/api/device/photo/${aluno.idface_user_id}` : ''}
+                            src={aluno.avatar_url || ''}
                             className="object-cover"
                           />
                           <AvatarFallback className={cn('text-xs font-semibold', colorClass)}>

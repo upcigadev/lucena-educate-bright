@@ -30,6 +30,7 @@ interface FreqAluno {
   matricula: string;
   iniciais: string;
   idfaceUserId: string | null;
+  avatarUrl: string | null;
   status: StatusType;
   horaEntrada: string | null;
 }
@@ -46,7 +47,7 @@ interface TurmaRow {
 }
 
 interface ProfessorOption { id: string; nome: string; }
-interface AlunoOption { id: string; nome_completo: string; matricula: string; idface_user_id: string | null; turma_id: string | null; }
+interface AlunoOption { id: string; nome_completo: string; matricula: string; idface_user_id: string | null; turma_id: string | null; avatar_url: string | null; }
 
 const statusConfig: Record<StatusType, { label: string; className: string }> = {
   presente:   { label: 'Presente',        className: 'bg-emerald-500/15 text-emerald-700 border-emerald-200' },
@@ -90,6 +91,7 @@ export default function TurmaDetalhe() {
   const [turma, setTurma] = useState<TurmaRow | null>(null);
   const [escola, setEscola] = useState<{ nome: string } | null>(null);
   const [freqAlunos, setFreqAlunos] = useState<FreqAluno[]>([]);
+  const [turmaProfessores, setTurmaProfessores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Edit turma
@@ -141,7 +143,10 @@ export default function TurmaDetalhe() {
       const dateStr = format(date, 'yyyy-MM-dd');
       const { data: alunos } = await db.alunos.listByTurma(turmaId);
       const { data: freqs } = await db.frequencias.listByTurmaAndDate(turmaId, dateStr);
+      const { data: profs } = await db.turma_professores.listProfessoresCompleto(turmaId);
       const freqMap = new Map((freqs || []).map((f: any) => [f.aluno_id, f]));
+      
+      setTurmaProfessores(profs as any[] || []);
 
       // Recompute status from hora_entrada and current schedule; heal stale DB records.
       const horarioInicio = (t as TurmaRow | null)?.horario_inicio ?? null;
@@ -166,6 +171,7 @@ export default function TurmaDetalhe() {
           matricula: a.matricula,
           iniciais: getInitials(a.nome_completo),
           idfaceUserId: a.idface_user_id || null,
+          avatarUrl: a.avatar_url || null,
           status,
           horaEntrada: freq?.hora_entrada || null,
         };
@@ -200,9 +206,13 @@ export default function TurmaDetalhe() {
       }, 800);
     });
 
+    // Real-time polling
+    const interval = setInterval(loadData, 30_000);
+
     return () => {
       socket.disconnect();
       if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+      clearInterval(interval);
     };
   }, [loadData]);
 
@@ -409,7 +419,7 @@ export default function TurmaDetalhe() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <Card><CardContent className="p-5 flex items-center gap-4"><div className="h-11 w-11 rounded-xl bg-violet-500/10 flex items-center justify-center"><GraduationCap className="h-5 w-5 text-violet-600" /></div><div><p className="text-sm text-muted-foreground">Professores</p><p className="text-base font-semibold text-card-foreground">{freqAlunos.length > 0 ? totalAlunos : '—'}</p></div></CardContent></Card>
+        <Card><CardContent className="p-5 flex items-center gap-4"><div className="h-11 w-11 rounded-xl bg-violet-500/10 flex items-center justify-center"><GraduationCap className="h-5 w-5 text-violet-600" /></div><div><p className="text-sm text-muted-foreground">Professores</p><p className="text-2xl font-bold tabular-nums text-card-foreground">{turmaProfessores.length}</p></div></CardContent></Card>
         <Card><CardContent className="p-5 flex items-center gap-4"><div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center"><Users className="h-5 w-5 text-primary" /></div><div><p className="text-sm text-muted-foreground">Total de Alunos</p><p className="text-2xl font-bold tabular-nums text-card-foreground">{totalAlunos}</p></div></CardContent></Card>
         <Card><CardContent className="p-5 flex items-center gap-4"><div className="h-11 w-11 rounded-xl bg-emerald-500/10 flex items-center justify-center"><TrendingUp className="h-5 w-5 text-emerald-600" /></div><div><p className="text-sm text-muted-foreground">Frequência do Dia</p><p className="text-2xl font-bold tabular-nums text-card-foreground">{freqPct}%</p></div></CardContent></Card>
       </div>
@@ -456,7 +466,7 @@ export default function TurmaDetalhe() {
                       <TableCell>
                         <Avatar className="h-9 w-9">
                           <AvatarImage
-                            src={aluno.idfaceUserId ? `http://localhost:3000/api/device/photo/${aluno.idfaceUserId}` : ''}
+                            src={aluno.avatarUrl || ''}
                             className="object-cover"
                           />
                           <AvatarFallback className={cn('text-xs font-semibold', colorClass)}>{aluno.iniciais}</AvatarFallback>
@@ -559,7 +569,7 @@ export default function TurmaDetalhe() {
                   >
                     <div className="flex items-center gap-2">
                       <Avatar className="h-7 w-7">
-                        <AvatarImage src={a.idface_user_id ? `http://localhost:3000/api/device/photo/${a.idface_user_id}` : ''} className="object-cover" />
+                        <AvatarImage src={a.avatar_url || ''} className="object-cover" />
                         <AvatarFallback className="text-[10px]">{getInitials(a.nome_completo)}</AvatarFallback>
                       </Avatar>
                       <div>

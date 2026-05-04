@@ -181,37 +181,55 @@ export default function Alunos() {
 
     const toDeviceTime = (t: string | null) => {
       if (!t) return null;
-      // O Control iD costuma aceitar HH:MM (sem segundos).
       const s = String(t);
       return s.length >= 5 ? s.slice(0, 5) : s;
     };
 
     if (editing) {
-      await db.alunos.update(editing.id, {
-        nome_completo: form.nome_completo,
-        data_nascimento: form.data_nascimento || null,
-        turma_id: form.turma_id || null,
-        escola_id: form.escola_id,
-        horario_inicio,
-        horario_fim,
-        limite_max
-      });
-      toast.success('Aluno atualizado.');
+      try {
+        await db.alunos.update(editing.id, {
+          nome_completo: form.nome_completo,
+          data_nascimento: form.data_nascimento || null,
+          turma_id: form.turma_id || null,
+          escola_id: form.escola_id,
+          horario_inicio,
+          horario_fim,
+          limite_max
+        });
+        toast.success('Aluno atualizado.');
+        setOpen(false);
+        load();
+      } catch (err: any) {
+        toast.error(`Erro ao atualizar aluno: ${err?.message || 'Tente novamente.'}`);
+      }
     } else {
-      const inserted = await db.alunos.insert({
-        nome_completo: form.nome_completo,
-        matricula: form.matricula,
-        data_nascimento: form.data_nascimento || null,
-        escola_id: form.escola_id,
-        turma_id: form.turma_id || null,
-        horario_inicio,
-        horario_fim,
-        limite_max,
-      });
-      const alunoId = inserted.data?.id;
+      // 1. Verifica duplicidade de matrícula ANTES de qualquer operação
+      let alunoId: string | undefined;
+      try {
+        const inserted = await db.alunos.insert({
+          nome_completo: form.nome_completo,
+          matricula: form.matricula,
+          data_nascimento: form.data_nascimento || null,
+          escola_id: form.escola_id,
+          turma_id: form.turma_id || null,
+          horario_inicio,
+          horario_fim,
+          limite_max,
+        });
+        alunoId = inserted.data?.id;
+      } catch (dbErr: any) {
+        const msg = String(dbErr?.message || dbErr || '');
+        if (msg.toLowerCase().includes('unique') || msg.toLowerCase().includes('matricula')) {
+          toast.error(`Matrícula "${form.matricula}" já está em uso por outro aluno ativo.`);
+        } else {
+          toast.error(`Erro ao cadastrar aluno: ${msg || 'Tente novamente.'}`);
+        }
+        return; 
+      }
+
       toast.success('Aluno cadastrado.');
 
-      // Link pending responsável selected in the Responsável tab (before save)
+      // 2. Link pending responsável selected in the Responsável tab (before save)
       if (alunoId && pendingResp) {
         try {
           await db.alunoResponsaveis.insert({
@@ -225,7 +243,7 @@ export default function Alunos() {
         setPendingResp(null);
       }
 
-      // Sync with the biometric device without blocking UI flow if offline
+      // 3. Sync with the biometric device
       try {
         const configResult = await db.iotConfig.getByEscola(form.escola_id);
         const config = configResult.data;
@@ -255,9 +273,9 @@ export default function Alunos() {
       } catch (err) {
         console.error('Error during biometric sync:', err);
       }
+      setOpen(false);
+      load();
     }
-    setOpen(false);
-    load();
   };
 
   const deactivate = async (aluno: AlunoRow) => {

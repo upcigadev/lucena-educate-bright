@@ -153,6 +153,9 @@ export default function EscolaDetalhe() {
       }
       setScheduleOpen(false);
       load();
+
+      // Sincroniza horários com o Control iD (fire-and-forget)
+      void sincronizarHorariosControlId(escolaId, horario_inicio, limite_max);
     } finally {
       setSavingSchedule(false);
     }
@@ -162,12 +165,10 @@ export default function EscolaDetalhe() {
     if (!escolaId) return;
     setSavingPerSerie(true);
     try {
-      // Save escola defaults too
       const horario_inicio = scheduleForm.horario_inicio || null;
       const tolerancia_min = scheduleForm.tolerancia_min ? Number(scheduleForm.tolerancia_min) : null;
       const limite_max = scheduleForm.limite_max || null;
       await db.escolas.update(escolaId, { horario_inicio, tolerancia_min, limite_max });
-      // Save each serie individually
       for (const ss of serieSchedules) {
         await db.series.update(ss.id, {
           horario_inicio: ss.horario_inicio || null,
@@ -177,10 +178,61 @@ export default function EscolaDetalhe() {
       toast.success('Horários personalizados por série salvos.');
       setPerSerieOpen(false);
       load();
+
+      // Sincroniza horários com o Control iD usando o fallback da escola (fire-and-forget)
+      void sincronizarHorariosControlId(escolaId, horario_inicio, limite_max);
     } finally {
       setSavingPerSerie(false);
     }
   };
+
+  /**
+   * Busca todos os alunos ativos da escola que possuem biometria cadastrada no Control iD
+   * e atualiza o begin_time / end_time de cada um no aparelho (upsert).
+   * É fire-and-forget: não bloqueia a UI e falhas são apenas logadas.
+   */
+  async function sincronizarHorariosControlId(
+    escola_id: string,
+    horario_inicio: string | null,
+    limite_max: string | null
+  ) {
+    try {
+      const configResult = await db.iotConfig.getByEscola(escola_id);
+      const config = configResult.data as any;
+      if (!config?.ip_address) return; // Sem dispositivo configurado
+
+      const { data: alunosData } = await db.alunos.listByEscola(escola_id);
+      const alunos = ((alunosData || []) as any[]).filter(
+        (a) => a.idface_user_id != null && a.ativo !== 0
+      );
+
+      if (alunos.length === 0) return;
+
+      const toDeviceTime = (t: string | null) =>
+        t ? (String(t).length >= 5 ? String(t).slice(0, 5) : String(t)) : null;
+
+      const users = alunos.map((a) => ({
+        id: a.idface_user_id,          // ID interno no Control iD
+        name: a.nome_completo,
+        begin_time: toDeviceTime(a.horario_inicio ?? horario_inicio),
+        end_time:   toDeviceTime(a.limite_max ?? limite_max),
+      }));
+
+      const resp = await fetch('http://localhost:3000/api/sync-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: config.ip_address, users }),
+      });
+
+      const result = await resp.json();
+      console.info(
+        `[Control iD] Sync de horários concluído: ${result?.data?.created ?? 0} atualizados,`,
+        `${result?.data?.failedCount ?? 0} falhas.`
+      );
+    } catch (err) {
+      console.error('[Control iD] Falha ao sincronizar horários:', err);
+    }
+  }
 
   const saveSerie = async () => {
     if (!escolaId || !serieForm.nome) return;

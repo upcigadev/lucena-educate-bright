@@ -117,15 +117,22 @@ function GlobalDeviceMonitor() {
             const horaAtualMin = timeToMinutes(horaAtual);
 
             if (aluno && (event === undefined || ['6', '7'].includes(String(event)))) {
-              const horarioInicioMin = timeToMinutes((aluno as any).horario_inicio ?? null);
-              const limiteMaxMin = timeToMinutes(aluno.limite_max);
+              const horarioInicioMin = timeToMinutes((aluno as any).horario_inicio_efetivo ?? null);
+              const toleranciaMin    = Number((aluno as any).tolerancia_min_efetiva) || 0;
+              const limiteMaxMin     = timeToMinutes((aluno as any).limite_max_efetivo ?? null);
+
+              // Limite para ser "presente": horario_inicio + tolerancia (ex: 08:00 + 15 min = 08:15)
+              const limitePresente = horarioInicioMin != null ? horarioInicioMin + toleranciaMin : null;
 
               const status: 'presente' | 'atrasado' =
-                horarioInicioMin != null && horaAtualMin != null && horaAtualMin > horarioInicioMin
-                  ? 'atrasado'
-                  : limiteMaxMin != null && horaAtualMin != null && horaAtualMin > limiteMaxMin
-                  ? 'atrasado'
-                  : 'presente';
+                // Sem horário configurado → sempre presente
+                (limitePresente == null && limiteMaxMin == null)
+                  ? 'presente'
+                // Chegou dentro da janela de pontualidade (até horario_inicio + tolerancia) → presente
+                : (limitePresente != null && horaAtualMin != null && horaAtualMin <= limitePresente)
+                  ? 'presente'
+                // Fora da janela (mas registrou entrada) → atrasado
+                  : 'atrasado';
 
               const historico = await db.frequencias.listByAlunos([aluno.id], dataDeHoje, dataDeHoje);
               const historicoData: any[] = (historico.data as any[]) || [];

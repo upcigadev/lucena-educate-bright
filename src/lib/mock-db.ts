@@ -266,28 +266,10 @@ export const db = {
       return ok(rows[0]?.c || 0);
     },
     insert: async (data: { nome_completo: string; matricula: string; data_nascimento?: string | null; escola_id: string; turma_id?: string | null; horario_inicio?: string | null; horario_fim?: string | null; limite_max?: string | null; idface_user_id?: string | null; avatar_url?: string | null }) => {
-      // Upsert: se já existir um aluno com essa matrícula (mesmo inativo), reativa e atualiza.
-      const existing = await query<{ id: string }>('SELECT id FROM alunos WHERE matricula = ? LIMIT 1', [data.matricula]);
+      // Verifica se já existe aluno ATIVO com a mesma matrícula — lança erro para que o chamador possa exibir mensagem ao usuário
+      const existing = await query<{ id: string }>('SELECT id FROM alunos WHERE matricula = ? AND ativo = 1 LIMIT 1', [data.matricula]);
       if (existing.length > 0) {
-        const id = existing[0].id;
-        await run(
-          `UPDATE alunos SET nome_completo=?, data_nascimento=?, escola_id=?, turma_id=?,
-           horario_inicio=?, horario_fim=?, limite_max=?, idface_user_id=?, avatar_url=?, ativo=1
-           WHERE id=?`,
-          [
-            data.nome_completo,
-            data.data_nascimento || null,
-            data.escola_id,
-            data.turma_id || null,
-            data.horario_inicio || null,
-            data.horario_fim || null,
-            data.limite_max || null,
-            data.idface_user_id || null,
-            data.avatar_url || null,
-            id,
-          ]
-        );
-        return ok({ id });
+        throw new Error(`UNIQUE constraint failed: alunos.matricula`);
       }
       const id = generateId();
       await run(
@@ -333,9 +315,13 @@ export const db = {
       );
       return ok(rows[0] || null);
     },
-    // Soft-delete: seta ativo = 0. Nunca deleta fisicamente.
+    // Soft-delete: seta ativo = 0 e remove vínculos relacionais (responsáveis, turma).
+    // Frequências e ocorrências são preservadas para histórico escolar.
     deactivate: async (id: string) => {
-      await run('UPDATE alunos SET ativo = 0 WHERE id = ?', [id]);
+      // Remove vínculos com responsáveis para evitar resquícios na tela de responsáveis
+      await run('DELETE FROM aluno_responsaveis WHERE aluno_id = ?', [id]);
+      // Remove vínculo de turma (libera vaga)
+      await run('UPDATE alunos SET ativo = 0, turma_id = NULL WHERE id = ?', [id]);
       return ok(null);
     },
     getByDeviceUserIds: async (userIds: string[]) => {
@@ -345,7 +331,11 @@ export const db = {
         SELECT a.*, 
           COALESCE(t.nome, 'Sem turma') as turma_nome,
           COALESCE(s.nome, '') as serie_nome,
-          COALESCE(e.nome, '') as escola_nome
+          COALESCE(e.nome, '') as escola_nome,
+          -- Horário efetivo: aluno > turma > escola (cascata)
+          COALESCE(a.horario_inicio, t.horario_inicio, e.horario_inicio) as horario_inicio_efetivo,
+          COALESCE(a.tolerancia_min, t.tolerancia_min, e.tolerancia_min) as tolerancia_min_efetiva,
+          COALESCE(a.limite_max, t.limite_max, e.limite_max) as limite_max_efetivo
         FROM alunos a
         LEFT JOIN turmas t ON a.turma_id = t.id
         LEFT JOIN series s ON t.serie_id = s.id
@@ -614,7 +604,7 @@ export const db = {
     // Busca todas as frequências de uma data com dados do aluno (para pré-carregar o histórico de chamada)
     listByDate: async (date: string) => {
       const rows = await query(`
-        SELECT f.*, a.nome_completo, a.matricula, a.idface_user_id, a.horario_fim, a.limite_max, a.escola_id
+        SELECT f.*, a.nome_completo, a.matricula, a.idface_user_id, a.avatar_url, a.horario_fim, a.limite_max, a.escola_id
         FROM frequencias f
         JOIN alunos a ON f.aluno_id = a.id
         WHERE f.data = ?
@@ -647,15 +637,16 @@ export const db = {
       return ok(rows);
     },
     countByEscola: async (escolaId: string, date: string) => {
-      const rows = await query<{ total: number; presentes: number }>(`
+      const rows = await query<{ total: number; presentes: number; atrasados: number }>(`
         SELECT 
           COUNT(*) as total,
-          SUM(CASE WHEN f.status IN ('presente', 'atrasado') THEN 1 ELSE 0 END) as presentes
+          SUM(CASE WHEN f.status = 'presente'  THEN 1 ELSE 0 END) as presentes,
+          SUM(CASE WHEN f.status = 'atrasado'  THEN 1 ELSE 0 END) as atrasados
         FROM frequencias f
         JOIN alunos a ON f.aluno_id = a.id
         WHERE a.escola_id = ? AND f.data = ? AND a.ativo = 1
       `, [escolaId, date]);
-      return ok(rows[0] || { total: 0, presentes: 0 });
+      return ok(rows[0] || { total: 0, presentes: 0, atrasados: 0 });
     },
     frequenciaHojeByProfessor: async (usuarioId: string, date: string) => {
       const rows = await query<{ turma_id: string, turma_nome: string, total_alunos: number, frequencias_registradas: number, presentes: number }>(`
@@ -1154,6 +1145,81 @@ export const db = {
       }
 
       return ok(rows);
+    },
+
+    /**
+     * Retorna destinatários com telefone para o disparo do webhook n8n.
+     * Retorna um array de { nome, telefone } deduplicado, filtrando
+     * registros sem telefone.
+     */
+    getDestinatariosComTelefone: async (
+      alvo: 'escola' | 'professores' | 'turma' | 'responsaveis',
+      escolaId?: string | null,
+      turmaId?: string | null
+    ): Promise<{ nome: string; telefone: string }[]> => {
+
+      type RawRow = { nome: string; telefone: string | null };
+      let rows: RawRow[] = [];
+
+      if (alvo === 'professores' && escolaId) {
+        // Professores: a tabela usuarios não possui coluna telefone.
+        // Retornamos NULL; todos serão filtrados pelo loop de deduplicação.
+        rows = await query<RawRow>(`
+          SELECT DISTINCT u.nome, NULL as telefone
+          FROM professores p
+          JOIN professor_escolas pe ON p.id = pe.professor_id
+          JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
+          WHERE pe.escola_id = ?
+        `, [escolaId]);
+
+      } else if (alvo === 'responsaveis' && escolaId) {
+        rows = await query<RawRow>(`
+          SELECT DISTINCT u.nome, r.telefone
+          FROM responsaveis r
+          JOIN aluno_responsaveis ar ON r.id = ar.responsavel_id
+          JOIN alunos a ON ar.aluno_id = a.id AND a.ativo = 1 AND a.escola_id = ?
+          JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        `, [escolaId]);
+
+      } else if (alvo === 'turma' && turmaId) {
+        rows = await query<RawRow>(`
+          SELECT DISTINCT u.nome, r.telefone
+          FROM responsaveis r
+          JOIN aluno_responsaveis ar ON r.id = ar.responsavel_id
+          JOIN alunos a ON ar.aluno_id = a.id AND a.ativo = 1 AND a.turma_id = ?
+          JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        `, [turmaId]);
+
+      } else if (alvo === 'escola' && escolaId) {
+        const profs = await query<RawRow>(`
+          SELECT DISTINCT u.nome, NULL as telefone
+          FROM professores p
+          JOIN professor_escolas pe ON p.id = pe.professor_id
+          JOIN usuarios u ON p.usuario_id = u.id AND u.ativo = 1
+          WHERE pe.escola_id = ?
+        `, [escolaId]);
+        const resps = await query<RawRow>(`
+          SELECT DISTINCT u.nome, r.telefone
+          FROM responsaveis r
+          JOIN aluno_responsaveis ar ON r.id = ar.responsavel_id
+          JOIN alunos a ON ar.aluno_id = a.id AND a.ativo = 1 AND a.escola_id = ?
+          JOIN usuarios u ON r.usuario_id = u.id AND u.ativo = 1
+        `, [escolaId]);
+        rows = [...profs, ...resps];
+      }
+
+      // Deduplica por telefone e filtra sem número
+      const seen = new Set<string>();
+      const result: { nome: string; telefone: string }[] = [];
+      for (const row of rows) {
+        const tel = row.telefone?.trim() ?? '';
+        if (!tel) continue;
+        if (!seen.has(tel)) {
+          seen.add(tel);
+          result.push({ nome: row.nome as string, telefone: tel });
+        }
+      }
+      return result;
     },
 
     listComunicadosEnviados: async (remetenteId: string) => {

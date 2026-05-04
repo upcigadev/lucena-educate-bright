@@ -338,6 +338,7 @@ async function initDatabase(): Promise<SqlJsDatabase> {
     ensureColumn('limite_max', 'TEXT');
     ensureColumn('idface_user_id', 'TEXT');
     ensureColumn('avatar_url', 'TEXT');
+    ensureColumn('tolerancia_min', 'INTEGER'); // necessário mas opcional; cascata usa turma/escola
   } catch (e) {
     // If migration fails, we still want the app to start.
     console.warn('Failed to migrate `alunos` schedule columns:', e);

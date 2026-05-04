@@ -201,18 +201,19 @@ export default function Dashboard() {
           for (const escola of escolaList) {
             const { data: freqCount } = await db.frequencias.countByEscola(escola.id, today);
             const { data: alunoCount } = await db.alunos.countByEscola(escola.id);
-            const fc = freqCount as any || { total: 0, presentes: 0 };
+            const fc = freqCount as any || { total: 0, presentes: 0, atrasados: 0 };
             const total = Number(alunoCount) || 0;
-            const presentes = fc.presentes || 0;
-            totalPresentes += presentes;
-            totalAtrasados += (fc.total - presentes > 0 ? fc.total - presentes : 0);
-            totalAlunos += total;
+            const presentes  = Number(fc.presentes)  || 0;
+            const atrasados  = Number(fc.atrasados)  || 0;
+            totalPresentes  += presentes;
+            totalAtrasados  += atrasados;
+            totalAlunos     += total;
             escolaStatsArr.push({
               id: escola.id,
               nome: escola.nome,
               totalAlunos: total,
-              presentes,
-              freqPct: total > 0 ? Math.round((presentes / total) * 100) : 0,
+              presentes: presentes + atrasados, // presença inclui atrasados para a barra
+              freqPct: total > 0 ? Math.round(((presentes + atrasados) / total) * 100) : 0,
             });
           }
         }
@@ -276,6 +277,9 @@ export default function Dashboard() {
       }
     };
     load();
+    // Atualiza a cada 30 segundos para refletir novos acessos biométricos
+    const interval = setInterval(load, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   const freqGlobalPct = freqHoje.total > 0
